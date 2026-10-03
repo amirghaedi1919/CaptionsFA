@@ -3,18 +3,16 @@ package com.daboua.captions
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -51,12 +50,11 @@ private fun CaptionsFaApp() {
         mutableStateOf<Uri?>(null)
     }
 
-    val videoPicker =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.GetContent()
-        ) { uri ->
-            videoUri = uri
-        }
+    val videoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        videoUri = uri
+    }
 
     MaterialTheme {
 
@@ -68,7 +66,8 @@ private fun CaptionsFaApp() {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
 
                 Text(
@@ -77,7 +76,7 @@ private fun CaptionsFaApp() {
                 )
 
                 Spacer(
-                    modifier = Modifier.height(12.dp)
+                    modifier = Modifier.height(16.dp)
                 )
 
                 Button(
@@ -98,13 +97,22 @@ private fun CaptionsFaApp() {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .height(400.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
 
                         Text(
                             text = "هنوز ویدئویی انتخاب نشده"
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(8.dp)
+                        )
+
+                        Text(
+                            text = "برای شروع یک ویدئو انتخاب کنید",
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -114,25 +122,7 @@ private fun CaptionsFaApp() {
                         uri = videoUri!!,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f)
-                    )
-                }
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-
-                    Text(
-                        text = if (videoUri == null) {
-                            "یک ویدئو برای شروع انتخاب کنید"
-                        } else {
-                            "ویدئو آماده ویرایش است"
-                        }
+                            .height(400.dp)
                     )
                 }
             }
@@ -146,7 +136,7 @@ private fun VideoPreview(
     modifier: Modifier = Modifier
 ) {
 
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     val player = remember(uri) {
 
@@ -174,11 +164,13 @@ private fun VideoPreview(
 
     AndroidView(
         modifier = modifier,
-        factory = { context ->
 
-            PlayerView(context).apply {
+        factory = { viewContext ->
+
+            PlayerView(viewContext).apply {
 
                 this.player = player
+
                 useController = true
             }
         }
