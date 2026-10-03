@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 
 data class Caption(
     val id: Int,
@@ -73,10 +75,39 @@ private fun CaptionsFaApp() {
         mutableStateOf(1)
     }
 
+    var selectedCaptionId by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var currentPosition by remember {
+        mutableStateOf(0L)
+    }
+
+    var playerReference by remember {
+        mutableStateOf<ExoPlayer?>(null)
+    }
+
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         videoUri = uri
+        currentPosition = 0L
+        selectedCaptionId = null
+    }
+
+    LaunchedEffect(playerReference) {
+
+        while (playerReference != null) {
+
+            currentPosition = playerReference?.currentPosition ?: 0L
+
+            delay(100L)
+        }
+    }
+
+    val activeCaption = captions.firstOrNull {
+        currentPosition >= it.startTime &&
+            currentPosition <= it.endTime
     }
 
     MaterialTheme {
@@ -124,9 +155,7 @@ private fun CaptionsFaApp() {
                         verticalArrangement = Arrangement.Center
                     ) {
 
-                        Text(
-                            text = "هنوز ویدئویی انتخاب نشده"
-                        )
+                        Text("هنوز ویدئویی انتخاب نشده")
 
                     }
 
@@ -134,6 +163,9 @@ private fun CaptionsFaApp() {
 
                     VideoPreview(
                         uri = videoUri!!,
+                        onPlayerReady = { player ->
+                            playerReference = player
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp)
@@ -141,7 +173,177 @@ private fun CaptionsFaApp() {
                 }
 
                 Spacer(
-                    modifier = Modifier.height(16.dp)
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "زمان فعلی: ${formatTime(currentPosition)}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+
+                    Button(
+                        onClick = {
+
+                            val newPosition =
+                                (currentPosition - 5000L).coerceAtLeast(0L)
+
+                            playerReference?.seekTo(newPosition)
+                            currentPosition = newPosition
+                        }
+                    ) {
+                        Text("-5s")
+                    }
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Button(
+                        onClick = {
+
+                            playerReference?.let { player ->
+
+                                if (player.isPlaying) {
+                                    player.pause()
+                                } else {
+                                    player.play()
+                                }
+                            }
+                        }
+                    ) {
+                        Text(
+                            if (playerReference?.isPlaying == true) {
+                                "توقف"
+                            } else {
+                                "پخش"
+                            }
+                        )
+                    }
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Button(
+                        onClick = {
+
+                            val newPosition =
+                                currentPosition + 5000L
+
+                            playerReference?.seekTo(newPosition)
+                            currentPosition = newPosition
+                        }
+                    ) {
+                        Text("+5s")
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                if (activeCaption != null) {
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+
+                        Text(
+                            text = activeCaption.text,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+
+                } else {
+
+                    Text(
+                        text = "در این لحظه کپشنی فعال نیست",
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+
+                    Button(
+                        onClick = {
+
+                            val selectedId = selectedCaptionId
+
+                            if (selectedId != null) {
+
+                                val index = captions.indexOfFirst {
+                                    it.id == selectedId
+                                }
+
+                                if (index >= 0) {
+
+                                    val old = captions[index]
+
+                                    captions[index] =
+                                        old.copy(
+                                            startTime = currentPosition
+                                        )
+                                }
+                            }
+                        },
+                        enabled = selectedCaptionId != null
+                    ) {
+                        Text("ثبت شروع")
+                    }
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+                    Button(
+                        onClick = {
+
+                            val selectedId = selectedCaptionId
+
+                            if (selectedId != null) {
+
+                                val index = captions.indexOfFirst {
+                                    it.id == selectedId
+                                }
+
+                                if (index >= 0) {
+
+                                    val old = captions[index]
+
+                                    captions[index] =
+                                        old.copy(
+                                            endTime = currentPosition
+                                        )
+                                }
+                            }
+                        },
+                        enabled = selectedCaptionId != null
+                    ) {
+                        Text("ثبت پایان")
+                    }
+                }
+
+                Spacer(
+                    modifier = Modifier.height(12.dp)
                 )
 
                 Row(
@@ -158,14 +360,18 @@ private fun CaptionsFaApp() {
                     Button(
                         onClick = {
 
-                            captions.add(
+                            val newCaption =
                                 Caption(
                                     id = nextCaptionId,
                                     text = "کپشن جدید",
-                                    startTime = 0L,
-                                    endTime = 3000L
+                                    startTime = currentPosition,
+                                    endTime = currentPosition + 3000L
                                 )
-                            )
+
+                            captions.add(newCaption)
+
+                            selectedCaptionId =
+                                nextCaptionId
 
                             nextCaptionId++
                         }
@@ -180,19 +386,10 @@ private fun CaptionsFaApp() {
 
                 if (captions.isEmpty()) {
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-
-                        Text(
-                            text = "هنوز کپشنی اضافه نشده"
-                        )
-
-                    }
+                    Text(
+                        text = "هنوز کپشنی اضافه نشده",
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
 
                 } else {
 
@@ -207,12 +404,19 @@ private fun CaptionsFaApp() {
 
                             CaptionItem(
                                 caption = caption,
+                                selected = selectedCaptionId == caption.id,
+
+                                onSelect = {
+                                    selectedCaptionId =
+                                        caption.id
+                                },
 
                                 onTextChange = { newText ->
 
-                                    val index = captions.indexOfFirst {
-                                        it.id == caption.id
-                                    }
+                                    val index =
+                                        captions.indexOfFirst {
+                                            it.id == caption.id
+                                        }
 
                                     if (index >= 0) {
 
@@ -225,9 +429,10 @@ private fun CaptionsFaApp() {
 
                                 onStartChange = { newStart ->
 
-                                    val index = captions.indexOfFirst {
-                                        it.id == caption.id
-                                    }
+                                    val index =
+                                        captions.indexOfFirst {
+                                            it.id == caption.id
+                                        }
 
                                     if (index >= 0) {
 
@@ -240,9 +445,10 @@ private fun CaptionsFaApp() {
 
                                 onEndChange = { newEnd ->
 
-                                    val index = captions.indexOfFirst {
-                                        it.id == caption.id
-                                    }
+                                    val index =
+                                        captions.indexOfFirst {
+                                            it.id == caption.id
+                                        }
 
                                     if (index >= 0) {
 
@@ -257,6 +463,10 @@ private fun CaptionsFaApp() {
 
                                     captions.removeAll {
                                         it.id == caption.id
+                                    }
+
+                                    if (selectedCaptionId == caption.id) {
+                                        selectedCaptionId = null
                                     }
                                 }
                             )
@@ -275,6 +485,8 @@ private fun CaptionsFaApp() {
 @Composable
 private fun CaptionItem(
     caption: Caption,
+    selected: Boolean,
+    onSelect: () -> Unit,
     onTextChange: (String) -> Unit,
     onStartChange: (Long) -> Unit,
     onEndChange: (Long) -> Unit,
@@ -301,6 +513,23 @@ private fun CaptionItem(
             modifier = Modifier.padding(12.dp)
         ) {
 
+            Button(
+                onClick = onSelect,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (selected) {
+                        "کپشن انتخاب شده"
+                    } else {
+                        "انتخاب این کپشن"
+                    }
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
+
             OutlinedTextField(
                 value = textValue,
                 onValueChange = {
@@ -311,8 +540,7 @@ private fun CaptionItem(
                 modifier = Modifier.fillMaxWidth(),
                 label = {
                     Text("متن کپشن")
-                },
-                singleLine = false
+                }
             )
 
             Spacer(
@@ -384,6 +612,7 @@ private fun CaptionItem(
 @Composable
 private fun VideoPreview(
     uri: Uri,
+    onPlayerReady: (ExoPlayer) -> Unit,
     modifier: Modifier = Modifier
 ) {
 
@@ -406,6 +635,10 @@ private fun VideoPreview(
             }
     }
 
+    LaunchedEffect(player) {
+        onPlayerReady(player)
+    }
+
     DisposableEffect(player) {
 
         onDispose {
@@ -425,5 +658,27 @@ private fun VideoPreview(
                 useController = true
             }
         }
+    )
+}
+
+private fun formatTime(milliseconds: Long): String {
+
+    val totalSeconds =
+        milliseconds / 1000L
+
+    val minutes =
+        totalSeconds / 60L
+
+    val seconds =
+        totalSeconds % 60L
+
+    val millis =
+        milliseconds % 1000L
+
+    return String.format(
+        "%02d:%02d.%03d",
+        minutes,
+        seconds,
+        millis
     )
 }
