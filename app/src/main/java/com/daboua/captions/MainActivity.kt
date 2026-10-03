@@ -6,6 +6,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -54,6 +64,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
+enum class CaptionAnimation {
+    NONE,
+    FADE,
+    SLIDE_UP,
+    SLIDE_DOWN,
+    SLIDE_LEFT,
+    SLIDE_RIGHT
+}
+
 data class CaptionStyle(
     val fontSize: Float = 28f,
     val textColor: Long = 0xFFFFFFFF,
@@ -62,7 +81,9 @@ data class CaptionStyle(
     val alignment: Int = 1,
     val position: Float = 0.80f,
     val highlightEnabled: Boolean = false,
-    val highlightColor: Long = 0xFFFFD54F
+    val highlightColor: Long = 0xFFFFD54F,
+    val animation: CaptionAnimation = CaptionAnimation.NONE,
+    val animationDuration: Int = 350
 )
 
 data class Caption(
@@ -115,14 +136,17 @@ private fun CaptionsFaApp() {
         mutableStateOf<ExoPlayer?>(null)
     }
 
-    val videoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        videoUri = uri
-        currentPosition = 0L
-        duration = 0L
-        selectedCaptionId = null
-    }
+    val videoPicker =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts.GetContent()
+        ) { uri ->
+
+            videoUri = uri
+            currentPosition = 0L
+            duration = 0L
+            selectedCaptionId = null
+        }
 
     LaunchedEffect(playerReference) {
 
@@ -134,24 +158,31 @@ private fun CaptionsFaApp() {
                 player?.currentPosition ?: 0L
 
             duration =
-                player?.duration?.takeIf {
-                    it > 0L
-                } ?: 0L
+                player?.duration
+                    ?.takeIf {
+                        it > 0L
+                    }
+                    ?: 0L
 
             delay(100L)
         }
     }
 
-    val activeCaption = captions.firstOrNull {
-        currentPosition >= it.startTime &&
-            currentPosition <= it.endTime
-    }
+    val activeCaption =
+        captions.firstOrNull {
+
+            currentPosition >= it.startTime &&
+                currentPosition <= it.endTime
+        }
 
     MaterialTheme {
 
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color =
+                MaterialTheme
+                    .colorScheme
+                    .background
         ) {
 
             Column(
@@ -163,7 +194,9 @@ private fun CaptionsFaApp() {
                 Text(
                     text = "Captions FA",
                     style =
-                        MaterialTheme.typography.headlineSmall
+                        MaterialTheme
+                            .typography
+                            .headlineSmall
                 )
 
                 Spacer(
@@ -174,8 +207,10 @@ private fun CaptionsFaApp() {
                     onClick = {
                         videoPicker.launch("video/*")
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier =
+                        Modifier.fillMaxWidth()
                 ) {
+
                     Text("انتخاب ویدئو")
                 }
 
@@ -196,7 +231,8 @@ private fun CaptionsFaApp() {
                     ) {
 
                         Text(
-                            text = "هنوز ویدئویی انتخاب نشده"
+                            text =
+                                "هنوز ویدئویی انتخاب نشده"
                         )
                     }
 
@@ -213,14 +249,16 @@ private fun CaptionsFaApp() {
                             onPlayerReady = { player ->
                                 playerReference = player
                             },
-                            modifier = Modifier.fillMaxSize()
+                            modifier =
+                                Modifier.fillMaxSize()
                         )
 
                         if (activeCaption != null) {
 
                             CaptionOverlay(
                                 caption = activeCaption,
-                                modifier = Modifier.fillMaxSize()
+                                modifier =
+                                    Modifier.fillMaxSize()
                             )
                         }
                     }
@@ -235,7 +273,9 @@ private fun CaptionsFaApp() {
                         "${formatTime(currentPosition)} / " +
                             formatTime(duration),
                     style =
-                        MaterialTheme.typography.titleMedium
+                        MaterialTheme
+                            .typography
+                            .titleMedium
                 )
 
                 Spacer(
@@ -369,7 +409,9 @@ private fun CaptionsFaApp() {
                     Text(
                         text = "کپشن‌ها",
                         style =
-                            MaterialTheme.typography.titleLarge,
+                            MaterialTheme
+                                .typography
+                                .titleLarge,
                         modifier =
                             Modifier.weight(1f)
                     )
@@ -419,7 +461,8 @@ private fun CaptionsFaApp() {
                 if (captions.isEmpty()) {
 
                     Text(
-                        text = "هنوز کپشنی اضافه نشده",
+                        text =
+                            "هنوز کپشنی اضافه نشده",
                         modifier =
                             Modifier.padding(
                                 vertical = 16.dp
@@ -429,7 +472,8 @@ private fun CaptionsFaApp() {
                 } else {
 
                     LazyColumn(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier =
+                            Modifier.fillMaxWidth()
                     ) {
 
                         items(
@@ -657,6 +701,160 @@ private fun CaptionOverlay(
     val highlightColor =
         Color(style.highlightColor)
 
+    val enterTransition: EnterTransition
+    val exitTransition: ExitTransition
+
+    when (style.animation) {
+
+        CaptionAnimation.NONE -> {
+
+            enterTransition =
+                EnterTransition.None
+
+            exitTransition =
+                ExitTransition.None
+        }
+
+        CaptionAnimation.FADE -> {
+
+            enterTransition =
+                fadeIn(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            )
+                )
+
+            exitTransition =
+                fadeOut(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            )
+                )
+        }
+
+        CaptionAnimation.SLIDE_UP -> {
+
+            enterTransition =
+                slideInVertically(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    initialOffsetY = {
+                        it
+                    }
+                )
+
+            exitTransition =
+                slideOutVertically(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    targetOffsetY = {
+                        it
+                    }
+                )
+        }
+
+        CaptionAnimation.SLIDE_DOWN -> {
+
+            enterTransition =
+                slideInVertically(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    initialOffsetY = {
+                        -it
+                    }
+                )
+
+            exitTransition =
+                slideOutVertically(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    targetOffsetY = {
+                        -it
+                    }
+                )
+        }
+
+        CaptionAnimation.SLIDE_LEFT -> {
+
+            enterTransition =
+                slideInHorizontally(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    initialOffsetX = {
+                        it
+                    }
+                )
+
+            exitTransition =
+                slideOutHorizontally(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    targetOffsetX = {
+                        -it
+                    }
+                )
+        }
+
+        CaptionAnimation.SLIDE_RIGHT -> {
+
+            enterTransition =
+                slideInHorizontally(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    initialOffsetX = {
+                        -it
+                    }
+                )
+
+            exitTransition =
+                slideOutHorizontally(
+                    animationSpec =
+                        androidx.compose.animation.core
+                            .tween(
+                                durationMillis =
+                                    style.animationDuration
+                            ),
+                    targetOffsetX = {
+                        it
+                    }
+                )
+        }
+    }
+
     Box(
         modifier = modifier
     ) {
@@ -685,43 +883,52 @@ private fun CaptionOverlay(
                 verticalAlignment
         ) {
 
-            Box(
-                modifier = Modifier
-                    .clip(
-                        RoundedCornerShape(10.dp)
-                    )
-                    .background(
-                        backgroundColor
-                    )
-                    .padding(
-                        horizontal = 14.dp,
-                        vertical = 8.dp
-                    )
+            AnimatedVisibility(
+                visible = true,
+                enter = enterTransition,
+                exit = exitTransition
             ) {
 
-                Text(
-                    text = caption.text,
-                    color =
-                        if (style.highlightEnabled) {
-                            highlightColor
-                        } else {
-                            textColor
-                        },
-                    fontSize =
-                        style.fontSize.sp,
-                    fontWeight =
-                        if (style.bold) {
-                            FontWeight.Bold
-                        } else {
-                            FontWeight.Normal
-                        },
-                    textAlign =
-                        when (style.alignment) {
-                            0 -> TextAlign.Start
-                            2 -> TextAlign.End
-                            else -> TextAlign.Center
-                        }
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(
+                            RoundedCornerShape(10.dp)
+                        )
+                        .background(
+                            backgroundColor
+                        )
+                        .padding(
+                            horizontal = 14.dp,
+                            vertical = 8.dp
+                        )
+                ) {
+
+                    Text(
+                        text = caption.text,
+                        color =
+                            if (
+                                style.highlightEnabled
+                            ) {
+                                highlightColor
+                            } else {
+                                textColor
+                            },
+                        fontSize =
+                            style.fontSize.sp,
+                        fontWeight =
+                            if (style.bold) {
+                                FontWeight.Bold
+                            } else {
+                                FontWeight.Normal
+                            },
+                        textAlign =
+                            when (style.alignment) {
+                                0 -> TextAlign.Start
+                                2 -> TextAlign.End
+                                else -> TextAlign.Center
+                            }
+                    )
+                }
             }
         }
     }
@@ -774,16 +981,19 @@ private fun CaptionItem(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
     ) {
 
         Column(
-            modifier = Modifier.padding(12.dp)
+            modifier =
+                Modifier.padding(12.dp)
         ) {
 
             Button(
                 onClick = onSelect,
-                modifier = Modifier.fillMaxWidth()
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 Text(
@@ -806,7 +1016,8 @@ private fun CaptionItem(
                     textValue = it
                     onTextChange(it)
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth(),
                 label = {
                     Text("متن کپشن")
                 }
@@ -817,7 +1028,8 @@ private fun CaptionItem(
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth()
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 OutlinedTextField(
@@ -882,7 +1094,8 @@ private fun CaptionItem(
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth()
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 Button(
@@ -911,7 +1124,8 @@ private fun CaptionItem(
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth()
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 TextButton(
@@ -939,7 +1153,8 @@ private fun CaptionItem(
                 onClick = {
                     showStyle = !showStyle
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 Text(
@@ -960,9 +1175,7 @@ private fun CaptionItem(
                 Text(
                     text =
                         "اندازه فونت: " +
-                            "${caption.style.fontSize.toInt()}",
-                    style =
-                        MaterialTheme.typography.bodyMedium
+                            "${caption.style.fontSize.toInt()}"
                 )
 
                 Slider(
@@ -985,8 +1198,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "موقعیت عمودی کپشن"
+                    text = "موقعیت عمودی کپشن"
                 )
 
                 Slider(
@@ -1005,15 +1217,14 @@ private fun CaptionItem(
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                     horizontalArrangement =
                         Arrangement.SpaceBetween
                 ) {
 
                     Text("بالا")
-
                     Text("وسط")
-
                     Text("پایین")
                 }
 
@@ -1022,7 +1233,8 @@ private fun CaptionItem(
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
@@ -1048,7 +1260,8 @@ private fun CaptionItem(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
@@ -1083,7 +1296,8 @@ private fun CaptionItem(
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier =
+                        Modifier.fillMaxWidth()
                 ) {
 
                     TextButton(
@@ -1143,14 +1357,15 @@ private fun CaptionItem(
                 ColorChoices(
                     selectedColor =
                         caption.style.textColor,
-                    colors = listOf(
-                        0xFFFFFFFF,
-                        0xFFFFEB3B,
-                        0xFFFF9800,
-                        0xFFFF5252,
-                        0xFF69F0AE,
-                        0xFF40C4FF
-                    ),
+                    colors =
+                        listOf(
+                            0xFFFFFFFF,
+                            0xFFFFEB3B,
+                            0xFFFF9800,
+                            0xFFFF5252,
+                            0xFF69F0AE,
+                            0xFF40C4FF
+                        ),
                     onColorSelected = { color ->
 
                         onStyleChange {
@@ -1172,19 +1387,21 @@ private fun CaptionItem(
                 ColorChoices(
                     selectedColor =
                         caption.style.backgroundColor,
-                    colors = listOf(
-                        0x99000000,
-                        0xCC000000,
-                        0x99000000,
-                        0x99FFFFFF,
-                        0x990D47A1,
-                        0x99004640
-                    ),
+                    colors =
+                        listOf(
+                            0x99000000,
+                            0xCC000000,
+                            0x99FFFFFF,
+                            0x990D47A1,
+                            0x99004640,
+                            0x99B71C1C
+                        ),
                     onColorSelected = { color ->
 
                         onStyleChange {
                             copy(
-                                backgroundColor = color
+                                backgroundColor =
+                                    color
                             )
                         }
                     }
@@ -1201,23 +1418,184 @@ private fun CaptionItem(
                 ColorChoices(
                     selectedColor =
                         caption.style.highlightColor,
-                    colors = listOf(
-                        0xFFFFD54F,
-                        0xFFFF5252,
-                        0xFF69F0AE,
-                        0xFF40C4FF,
-                        0xFFFFFFFF,
-                        0xFFFF9800
-                    ),
+                    colors =
+                        listOf(
+                            0xFFFFD54F,
+                            0xFFFF5252,
+                            0xFF69F0AE,
+                            0xFF40C4FF,
+                            0xFFFFFFFF,
+                            0xFFFF9800
+                        ),
                     onColorSelected = { color ->
 
                         onStyleChange {
                             copy(
-                                highlightColor = color
+                                highlightColor =
+                                    color
                             )
                         }
                     }
                 )
+
+                Spacer(
+                    modifier = Modifier.height(12.dp)
+                )
+
+                Text(
+                    text = "انیمیشن کپشن",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .titleMedium
+                )
+
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
+
+                AnimationChoice(
+                    title = "بدون انیمیشن",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.NONE,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.NONE
+                            )
+                        }
+                    }
+                )
+
+                AnimationChoice(
+                    title = "Fade",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.FADE,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.FADE
+                            )
+                        }
+                    }
+                )
+
+                AnimationChoice(
+                    title = "Slide Up",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.SLIDE_UP,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.SLIDE_UP
+                            )
+                        }
+                    }
+                )
+
+                AnimationChoice(
+                    title = "Slide Down",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.SLIDE_DOWN,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.SLIDE_DOWN
+                            )
+                        }
+                    }
+                )
+
+                AnimationChoice(
+                    title = "Slide Left",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.SLIDE_LEFT,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.SLIDE_LEFT
+                            )
+                        }
+                    }
+                )
+
+                AnimationChoice(
+                    title = "Slide Right",
+                    selected =
+                        caption.style.animation ==
+                            CaptionAnimation.SLIDE_RIGHT,
+                    onClick = {
+
+                        onStyleChange {
+                            copy(
+                                animation =
+                                    CaptionAnimation.SLIDE_RIGHT
+                            )
+                        }
+                    }
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text =
+                        "مدت انیمیشن: " +
+                            "${caption.style.animationDuration} ms"
+                )
+
+                Slider(
+                    value =
+                        caption.style
+                            .animationDuration
+                            .toFloat(),
+                    onValueChange = { value ->
+
+                        val durationValue =
+                            value
+                                .toInt()
+                                .coerceIn(
+                                    100,
+                                    1500
+                                )
+
+                        onStyleChange {
+                            copy(
+                                animationDuration =
+                                    durationValue
+                            )
+                        }
+                    },
+                    valueRange =
+                        100f..1500f
+                )
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween
+                ) {
+
+                    Text("100ms")
+                    Text("1500ms")
+                }
             }
 
             Spacer(
@@ -1234,6 +1612,33 @@ private fun CaptionItem(
 }
 
 @Composable
+private fun AnimationChoice(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+
+    OutlinedButton(
+        onClick = onClick,
+        modifier =
+            Modifier.fillMaxWidth()
+    ) {
+
+        Text(
+            if (selected) {
+                "✓ $title"
+            } else {
+                title
+            }
+        )
+    }
+
+    Spacer(
+        modifier = Modifier.height(4.dp)
+    )
+}
+
+@Composable
 private fun ColorChoices(
     selectedColor: Long,
     colors: List<Long>,
@@ -1241,7 +1646,8 @@ private fun ColorChoices(
 ) {
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier.fillMaxWidth(),
         horizontalArrangement =
             Arrangement.spacedBy(8.dp)
     ) {
@@ -1303,7 +1709,8 @@ private fun Timeline(
         duration.coerceAtLeast(1L)
 
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
     ) {
 
         Box(
@@ -1409,7 +1816,8 @@ private fun Timeline(
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
             horizontalArrangement =
                 Arrangement.SpaceBetween
         ) {
@@ -1417,13 +1825,17 @@ private fun Timeline(
             Text(
                 text = "00:00.000",
                 style =
-                    MaterialTheme.typography.labelSmall
+                    MaterialTheme
+                        .typography
+                        .labelSmall
             )
 
             Text(
                 text = formatTime(duration),
                 style =
-                    MaterialTheme.typography.labelSmall
+                    MaterialTheme
+                        .typography
+                        .labelSmall
             )
         }
     }
