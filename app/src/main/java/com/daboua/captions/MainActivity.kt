@@ -100,6 +100,7 @@ private fun CaptionsFaApp() {
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
+
         videoUri = uri
         currentPosition = 0L
         duration = 0L
@@ -170,8 +171,10 @@ private fun CaptionsFaApp() {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(220.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        horizontalAlignment =
+                            Alignment.CenterHorizontally,
+                        verticalArrangement =
+                            Arrangement.Center
                     ) {
 
                         Text(
@@ -197,8 +200,11 @@ private fun CaptionsFaApp() {
                 )
 
                 Text(
-                    text = "${formatTime(currentPosition)} / ${formatTime(duration)}",
-                    style = MaterialTheme.typography.titleMedium
+                    text =
+                        "${formatTime(currentPosition)} / " +
+                            formatTime(duration),
+                    style =
+                        MaterialTheme.typography.titleMedium
                 )
 
                 Spacer(
@@ -211,7 +217,8 @@ private fun CaptionsFaApp() {
                         captions = captions,
                         currentPosition = currentPosition,
                         duration = duration,
-                        selectedCaptionId = selectedCaptionId,
+                        selectedCaptionId =
+                            selectedCaptionId,
                         onPositionChange = { position ->
 
                             val newPosition =
@@ -251,8 +258,13 @@ private fun CaptionsFaApp() {
                 } else {
 
                     Text(
-                        text = "پس از انتخاب ویدئو، تایم‌لاین اینجا نمایش داده می‌شود",
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        text =
+                            "پس از انتخاب ویدئو، " +
+                                "تایم‌لاین اینجا نمایش داده می‌شود",
+                        modifier =
+                            Modifier.padding(
+                                vertical = 12.dp
+                            )
                     )
                 }
 
@@ -262,15 +274,17 @@ private fun CaptionsFaApp() {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement =
+                        Arrangement.Center
                 ) {
 
                     Button(
                         onClick = {
 
                             val newPosition =
-                                (currentPosition - 5000L)
-                                    .coerceAtLeast(0L)
+                                (
+                                    currentPosition - 5000L
+                                ).coerceAtLeast(0L)
 
                             playerReference?.seekTo(
                                 newPosition
@@ -303,7 +317,8 @@ private fun CaptionsFaApp() {
 
                         Text(
                             if (
-                                playerReference?.isPlaying == true
+                                playerReference?.isPlaying ==
+                                    true
                             ) {
                                 "توقف"
                             } else {
@@ -353,17 +368,20 @@ private fun CaptionsFaApp() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            style = MaterialTheme.typography.titleLarge
+                            style =
+                                MaterialTheme.typography.titleLarge
                         )
                     }
 
                 } else {
 
                     Text(
-                        text = "در این لحظه کپشنی فعال نیست",
-                        modifier = Modifier.padding(
-                            vertical = 8.dp
-                        )
+                        text =
+                            "در این لحظه کپشنی فعال نیست",
+                        modifier =
+                            Modifier.padding(
+                                vertical = 8.dp
+                            )
                     )
                 }
 
@@ -373,17 +391,31 @@ private fun CaptionsFaApp() {
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
 
                     Text(
                         text = "کپشن‌ها",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.weight(1f)
+                        style =
+                            MaterialTheme.typography.titleLarge,
+                        modifier =
+                            Modifier.weight(1f)
                     )
 
                     Button(
                         onClick = {
+
+                            val defaultEnd =
+                                (
+                                    currentPosition + 3000L
+                                ).coerceAtMost(
+                                    if (duration > 0L) {
+                                        duration
+                                    } else {
+                                        currentPosition + 3000L
+                                    }
+                                )
 
                             val newCaption =
                                 Caption(
@@ -392,20 +424,10 @@ private fun CaptionsFaApp() {
                                     startTime =
                                         currentPosition,
                                     endTime =
-                                        (
-                                            currentPosition + 3000L
-                                        ).coerceAtMost(
-                                            if (duration > 0L) {
-                                                duration
-                                            } else {
-                                                currentPosition + 3000L
-                                            }
-                                        )
+                                        defaultEnd
                                 )
 
-                            captions.add(
-                                newCaption
-                            )
+                            captions.add(newCaption)
 
                             selectedCaptionId =
                                 nextCaptionId
@@ -425,9 +447,10 @@ private fun CaptionsFaApp() {
 
                     Text(
                         text = "هنوز کپشنی اضافه نشده",
-                        modifier = Modifier.padding(
-                            vertical = 16.dp
-                        )
+                        modifier =
+                            Modifier.padding(
+                                vertical = 16.dp
+                            )
                     )
 
                 } else {
@@ -462,55 +485,125 @@ private fun CaptionsFaApp() {
 
                                 onTextChange = { newText ->
 
-                                    val index =
-                                        captions.indexOfFirst {
-                                            it.id ==
-                                                caption.id
-                                        }
-
-                                    if (index >= 0) {
-
-                                        captions[index] =
-                                            caption.copy(
-                                                text = newText
-                                            )
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
+                                        copy(
+                                            text = newText
+                                        )
                                     }
                                 },
 
                                 onStartChange = { newStart ->
 
-                                    val index =
-                                        captions.indexOfFirst {
-                                            it.id ==
-                                                caption.id
-                                        }
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
 
-                                    if (index >= 0) {
-
-                                        captions[index] =
-                                            caption.copy(
-                                                startTime =
-                                                    newStart
+                                        val safeStart =
+                                            newStart.coerceAtLeast(
+                                                0L
                                             )
+
+                                        val safeEnd =
+                                            endTime.coerceAtLeast(
+                                                safeStart + 1L
+                                            )
+
+                                        copy(
+                                            startTime =
+                                                safeStart,
+                                            endTime =
+                                                safeEnd
+                                        )
                                     }
                                 },
 
                                 onEndChange = { newEnd ->
 
-                                    val index =
-                                        captions.indexOfFirst {
-                                            it.id ==
-                                                caption.id
-                                        }
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
 
-                                    if (index >= 0) {
-
-                                        captions[index] =
-                                            caption.copy(
-                                                endTime =
-                                                    newEnd
+                                        val safeEnd =
+                                            newEnd.coerceAtLeast(
+                                                startTime + 1L
                                             )
+
+                                        copy(
+                                            endTime =
+                                                safeEnd
+                                        )
                                     }
+                                },
+
+                                onSetStart = {
+
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
+
+                                        val safeStart =
+                                            currentPosition
+                                                .coerceAtLeast(
+                                                    0L
+                                                )
+
+                                        val safeEnd =
+                                            endTime.coerceAtLeast(
+                                                safeStart + 1L
+                                            )
+
+                                        copy(
+                                            startTime =
+                                                safeStart,
+                                            endTime =
+                                                safeEnd
+                                        )
+                                    }
+                                },
+
+                                onSetEnd = {
+
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
+
+                                        val safeEnd =
+                                            currentPosition.coerceAtLeast(
+                                                startTime + 1L
+                                            )
+
+                                        copy(
+                                            endTime =
+                                                safeEnd
+                                        )
+                                    }
+                                },
+
+                                onGoToStart = {
+
+                                    playerReference?.seekTo(
+                                        caption.startTime
+                                    )
+
+                                    currentPosition =
+                                        caption.startTime
+                                },
+
+                                onGoToEnd = {
+
+                                    playerReference?.seekTo(
+                                        caption.endTime
+                                    )
+
+                                    currentPosition =
+                                        caption.endTime
                                 },
 
                                 onDelete = {
@@ -531,7 +624,8 @@ private fun CaptionsFaApp() {
                             )
 
                             Spacer(
-                                modifier = Modifier.height(8.dp)
+                                modifier =
+                                    Modifier.height(8.dp)
                             )
                         }
                     }
@@ -541,143 +635,20 @@ private fun CaptionsFaApp() {
     }
 }
 
-@Composable
-private fun Timeline(
-    captions: List<Caption>,
-    currentPosition: Long,
-    duration: Long,
-    selectedCaptionId: Int?,
-    onPositionChange: (Long) -> Unit,
-    onCaptionSelected: (Int) -> Unit
+private fun updateCaption(
+    captions: MutableList<Caption>,
+    id: Int,
+    transform: Caption.() -> Caption
 ) {
 
-    val safeDuration =
-        duration.coerceAtLeast(1L)
-
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(70.dp)
-                .clip(
-                    RoundedCornerShape(10.dp)
-                )
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant
-                )
-                .clickable {
-
-                    onPositionChange(
-                        currentPosition
-                    )
-                }
-                .padding(6.dp)
-        ) {
-
-            captions.forEach { caption ->
-
-                val startFraction =
-                    (
-                        caption.startTime
-                            .toFloat() /
-                            safeDuration.toFloat()
-                    ).coerceIn(
-                        0f,
-                        1f
-                    )
-
-                val endFraction =
-                    (
-                        caption.endTime
-                            .toFloat() /
-                            safeDuration.toFloat()
-                    ).coerceIn(
-                        startFraction,
-                        1f
-                    )
-
-                val widthFraction =
-                    (
-                        endFraction -
-                            startFraction
-                    ).coerceAtLeast(
-                        0.02f
-                    )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(
-                            widthFraction
-                        )
-                        .height(58.dp)
-                        .padding(
-                            start = (
-                                startFraction * 1000
-                            ).dp
-                        )
-                        .clip(
-                            RoundedCornerShape(8.dp)
-                        )
-                        .border(
-                            width = if (
-                                selectedCaptionId ==
-                                    caption.id
-                            ) {
-                                2.dp
-                            } else {
-                                1.dp
-                            },
-                            color =
-                                MaterialTheme.colorScheme.primary,
-                            shape =
-                                RoundedCornerShape(8.dp)
-                        )
-                        .clickable {
-                            onCaptionSelected(
-                                caption.id
-                            )
-                        }
-                ) {
-
-                    Text(
-                        text = caption.text,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(6.dp),
-                        maxLines = 2,
-                        style =
-                            MaterialTheme.typography
-                                .labelMedium
-                    )
-                }
-            }
+    val index =
+        captions.indexOfFirst {
+            it.id == id
         }
 
-        Spacer(
-            modifier = Modifier.height(4.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement =
-                Arrangement.SpaceBetween
-        ) {
-
-            Text(
-                text = "00:00.000",
-                style =
-                    MaterialTheme.typography.labelSmall
-            )
-
-            Text(
-                text = formatTime(duration),
-                style =
-                    MaterialTheme.typography.labelSmall
-            )
-        }
+    if (index >= 0) {
+        captions[index] =
+            captions[index].transform()
     }
 }
 
@@ -689,6 +660,10 @@ private fun CaptionItem(
     onTextChange: (String) -> Unit,
     onStartChange: (Long) -> Unit,
     onEndChange: (Long) -> Unit,
+    onSetStart: () -> Unit,
+    onSetEnd: () -> Unit,
+    onGoToStart: () -> Unit,
+    onGoToEnd: () -> Unit,
     onDelete: () -> Unit
 ) {
 
@@ -822,14 +797,230 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(4.dp)
+                modifier = Modifier.height(8.dp)
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+
+                Button(
+                    onClick = onSetStart,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("ثبت شروع")
+                }
+
+                Spacer(
+                    modifier = Modifier.width(8.dp)
+                )
+
+                Button(
+                    onClick = onSetEnd,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("ثبت پایان")
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(6.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+
+                TextButton(
+                    onClick = onGoToStart,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("↤ شروع")
+                }
+
+                TextButton(
+                    onClick = onGoToEnd,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("پایان ↦")
+                }
+            }
 
             TextButton(
                 onClick = onDelete
             ) {
                 Text("حذف کپشن")
             }
+        }
+    }
+}
+
+@Composable
+private fun Timeline(
+    captions: List<Caption>,
+    currentPosition: Long,
+    duration: Long,
+    selectedCaptionId: Int?,
+    onPositionChange: (Long) -> Unit,
+    onCaptionSelected: (Int) -> Unit
+) {
+
+    val safeDuration =
+        duration.coerceAtLeast(1L)
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(70.dp)
+                .clip(
+                    RoundedCornerShape(10.dp)
+                )
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant
+                )
+                .padding(6.dp)
+        ) {
+
+            captions.forEach { caption ->
+
+                val startFraction =
+                    (
+                        caption.startTime
+                            .toFloat() /
+                            safeDuration.toFloat()
+                    ).coerceIn(
+                        0f,
+                        1f
+                    )
+
+                val endFraction =
+                    (
+                        caption.endTime
+                            .toFloat() /
+                            safeDuration.toFloat()
+                    ).coerceIn(
+                        startFraction,
+                        1f
+                    )
+
+                val widthFraction =
+                    (
+                        endFraction -
+                            startFraction
+                    ).coerceAtLeast(
+                        0.02f
+                    )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(
+                            widthFraction
+                        )
+                        .height(58.dp)
+                        .padding(
+                            start =
+                                (
+                                    startFraction * 1000
+                                ).dp
+                        )
+                        .clip(
+                            RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            width =
+                                if (
+                                    selectedCaptionId ==
+                                        caption.id
+                                ) {
+                                    2.dp
+                                } else {
+                                    1.dp
+                                },
+                            color =
+                                MaterialTheme
+                                    .colorScheme
+                                    .primary,
+                            shape =
+                                RoundedCornerShape(8.dp)
+                        )
+                        .clickable {
+                            onCaptionSelected(
+                                caption.id
+                            )
+                        }
+                ) {
+
+                    Text(
+                        text = caption.text,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(6.dp),
+                        maxLines = 2,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelMedium
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .clickable {
+
+                        val position =
+                            (
+                                currentPosition
+                                    .toFloat() /
+                                    safeDuration
+                                        .toFloat()
+                            ).coerceIn(
+                                0f,
+                                1f
+                            )
+
+                        onPositionChange(
+                            (
+                                safeDuration *
+                                    position
+                            ).toLong()
+                        )
+                    }
+            )
+        }
+
+        Spacer(
+            modifier = Modifier.height(4.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.SpaceBetween
+        ) {
+
+            Text(
+                text = "00:00.000",
+                style =
+                    MaterialTheme.typography.labelSmall
+            )
+
+            Text(
+                text = formatTime(duration),
+                style =
+                    MaterialTheme.typography.labelSmall
+            )
         }
     }
 }
