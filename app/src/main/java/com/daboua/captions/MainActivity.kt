@@ -42,7 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color as ComposeColor
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -246,25 +246,9 @@ private fun CaptionsFaApp() {
 
                     Timeline(
                         captions = captions,
-                        currentPosition = currentPosition,
                         duration = duration,
                         selectedCaptionId =
                             selectedCaptionId,
-                        onPositionChange = { position ->
-
-                            val newPosition =
-                                position.coerceIn(
-                                    0L,
-                                    duration
-                                )
-
-                            playerReference?.seekTo(
-                                newPosition
-                            )
-
-                            currentPosition =
-                                newPosition
-                        },
                         onCaptionSelected = { id ->
 
                             selectedCaptionId = id
@@ -665,27 +649,40 @@ private fun CaptionOverlay(
     val style = caption.style
 
     val textColor =
-        ComposeColor(style.textColor)
+        Color(style.textColor)
 
     val backgroundColor =
-        ComposeColor(style.backgroundColor)
+        Color(style.backgroundColor)
 
     val highlightColor =
-        ComposeColor(style.highlightColor)
+        Color(style.highlightColor)
 
     Box(
         modifier = modifier
     ) {
 
+        val verticalAlignment =
+            when {
+
+                style.position < 0.33f ->
+                    Alignment.TopCenter
+
+                style.position < 0.66f ->
+                    Alignment.Center
+
+                else ->
+                    Alignment.BottomCenter
+            }
+
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(
-                    top = 0.dp,
-                    bottom = 30.dp
+                    horizontal = 12.dp,
+                    vertical = 12.dp
                 ),
             contentAlignment =
-                Alignment.BottomCenter
+                verticalAlignment
         ) {
 
             Box(
@@ -983,6 +980,47 @@ private fun CaptionItem(
                         14f..64f
                 )
 
+                Spacer(
+                    modifier = Modifier.height(4.dp)
+                )
+
+                Text(
+                    text =
+                        "موقعیت عمودی کپشن"
+                )
+
+                Slider(
+                    value =
+                        caption.style.position,
+                    onValueChange = { value ->
+
+                        onStyleChange {
+                            copy(
+                                position = value
+                            )
+                        }
+                    },
+                    valueRange =
+                        0.05f..0.95f
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement =
+                        Arrangement.SpaceBetween
+                ) {
+
+                    Text("بالا")
+
+                    Text("وسط")
+
+                    Text("پایین")
+                }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment =
@@ -1094,12 +1132,91 @@ private fun CaptionItem(
                     }
                 }
 
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
                 Text(
-                    text =
-                        "رنگ متن، رنگ پس‌زمینه و " +
-                            "رنگ هایلایت در مرحله بعد اضافه می‌شود.",
-                    style =
-                        MaterialTheme.typography.bodySmall
+                    text = "رنگ متن"
+                )
+
+                ColorChoices(
+                    selectedColor =
+                        caption.style.textColor,
+                    colors = listOf(
+                        0xFFFFFFFF,
+                        0xFFFFEB3B,
+                        0xFFFF9800,
+                        0xFFFF5252,
+                        0xFF69F0AE,
+                        0xFF40C4FF
+                    ),
+                    onColorSelected = { color ->
+
+                        onStyleChange {
+                            copy(
+                                textColor = color
+                            )
+                        }
+                    }
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "رنگ پس‌زمینه"
+                )
+
+                ColorChoices(
+                    selectedColor =
+                        caption.style.backgroundColor,
+                    colors = listOf(
+                        0x99000000,
+                        0xCC000000,
+                        0x99000000,
+                        0x99FFFFFF,
+                        0x990D47A1,
+                        0x99004640
+                    ),
+                    onColorSelected = { color ->
+
+                        onStyleChange {
+                            copy(
+                                backgroundColor = color
+                            )
+                        }
+                    }
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "رنگ هایلایت"
+                )
+
+                ColorChoices(
+                    selectedColor =
+                        caption.style.highlightColor,
+                    colors = listOf(
+                        0xFFFFD54F,
+                        0xFFFF5252,
+                        0xFF69F0AE,
+                        0xFF40C4FF,
+                        0xFFFFFFFF,
+                        0xFFFF9800
+                    ),
+                    onColorSelected = { color ->
+
+                        onStyleChange {
+                            copy(
+                                highlightColor = color
+                            )
+                        }
+                    }
                 )
             }
 
@@ -1117,12 +1234,68 @@ private fun CaptionItem(
 }
 
 @Composable
+private fun ColorChoices(
+    selectedColor: Long,
+    colors: List<Long>,
+    onColorSelected: (Long) -> Unit
+) {
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement =
+            Arrangement.spacedBy(8.dp)
+    ) {
+
+        colors.forEach { colorValue ->
+
+            val selected =
+                colorValue == selectedColor
+
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(42.dp)
+                    .clip(
+                        RoundedCornerShape(8.dp)
+                    )
+                    .background(
+                        Color(colorValue)
+                    )
+                    .border(
+                        width =
+                            if (selected) {
+                                3.dp
+                            } else {
+                                1.dp
+                            },
+                        color =
+                            if (selected) {
+                                MaterialTheme
+                                    .colorScheme
+                                    .primary
+                            } else {
+                                MaterialTheme
+                                    .colorScheme
+                                    .outline
+                            },
+                        shape =
+                            RoundedCornerShape(8.dp)
+                    )
+                    .clickable {
+                        onColorSelected(
+                            colorValue
+                        )
+                    }
+            )
+        }
+    }
+}
+
+@Composable
 private fun Timeline(
     captions: List<Caption>,
-    currentPosition: Long,
     duration: Long,
     selectedCaptionId: Int?,
-    onPositionChange: (Long) -> Unit,
     onCaptionSelected: (Int) -> Unit
 ) {
 
@@ -1141,7 +1314,9 @@ private fun Timeline(
                     RoundedCornerShape(10.dp)
                 )
                 .background(
-                    MaterialTheme.colorScheme.surfaceVariant
+                    MaterialTheme
+                        .colorScheme
+                        .surfaceVariant
                 )
                 .padding(6.dp)
         ) {
@@ -1176,7 +1351,9 @@ private fun Timeline(
 
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(widthFraction)
+                        .fillMaxWidth(
+                            widthFraction
+                        )
                         .height(58.dp)
                         .padding(
                             start =
