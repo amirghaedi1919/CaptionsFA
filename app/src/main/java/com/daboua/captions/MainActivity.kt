@@ -7,14 +7,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -82,7 +83,8 @@ data class CaptionStyle(
     val position: Float = 0.80f,
     val highlightEnabled: Boolean = false,
     val highlightColor: Long = 0xFFFFD54F,
-    val animation: CaptionAnimation = CaptionAnimation.NONE,
+    val animation: CaptionAnimation =
+        CaptionAnimation.NONE,
     val animationDuration: Int = 350
 )
 
@@ -96,7 +98,9 @@ data class Caption(
 
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
         super.onCreate(savedInstanceState)
 
         setContent {
@@ -136,6 +140,10 @@ private fun CaptionsFaApp() {
         mutableStateOf<ExoPlayer?>(null)
     }
 
+    var operationMessage by remember {
+        mutableStateOf("")
+    }
+
     val videoPicker =
         rememberLauncherForActivityResult(
             contract =
@@ -146,6 +154,7 @@ private fun CaptionsFaApp() {
             currentPosition = 0L
             duration = 0L
             selectedCaptionId = null
+            operationMessage = ""
         }
 
     LaunchedEffect(playerReference) {
@@ -278,6 +287,29 @@ private fun CaptionsFaApp() {
                             .titleMedium
                 )
 
+                if (
+                    operationMessage.isNotBlank()
+                ) {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(6.dp)
+                    )
+
+                    Text(
+                        text =
+                            operationMessage,
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .primary,
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodyMedium
+                    )
+                }
+
                 Spacer(
                     modifier = Modifier.height(8.dp)
                 )
@@ -316,7 +348,8 @@ private fun CaptionsFaApp() {
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                     horizontalArrangement =
                         Arrangement.Center
                 ) {
@@ -326,8 +359,11 @@ private fun CaptionsFaApp() {
 
                             val newPosition =
                                 (
-                                    currentPosition - 5000L
-                                ).coerceAtLeast(0L)
+                                    currentPosition -
+                                        5000L
+                                ).coerceAtLeast(
+                                    0L
+                                )
 
                             playerReference?.seekTo(
                                 newPosition
@@ -341,15 +377,19 @@ private fun CaptionsFaApp() {
                     }
 
                     Spacer(
-                        modifier = Modifier.width(8.dp)
+                        modifier =
+                            Modifier.width(8.dp)
                     )
 
                     Button(
                         onClick = {
 
-                            playerReference?.let { player ->
+                            playerReference?.let {
+                                player ->
 
-                                if (player.isPlaying) {
+                                if (
+                                    player.isPlaying
+                                ) {
                                     player.pause()
                                 } else {
                                     player.play()
@@ -360,7 +400,8 @@ private fun CaptionsFaApp() {
 
                         Text(
                             if (
-                                playerReference?.isPlaying ==
+                                playerReference
+                                    ?.isPlaying ==
                                     true
                             ) {
                                 "توقف"
@@ -371,7 +412,8 @@ private fun CaptionsFaApp() {
                     }
 
                     Spacer(
-                        modifier = Modifier.width(8.dp)
+                        modifier =
+                            Modifier.width(8.dp)
                     )
 
                     Button(
@@ -379,7 +421,8 @@ private fun CaptionsFaApp() {
 
                             val newPosition =
                                 (
-                                    currentPosition + 5000L
+                                    currentPosition +
+                                        5000L
                                 ).coerceAtMost(
                                     duration
                                 )
@@ -397,11 +440,13 @@ private fun CaptionsFaApp() {
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier =
+                        Modifier.fillMaxWidth(),
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
@@ -421,33 +466,53 @@ private fun CaptionsFaApp() {
 
                             val defaultEnd =
                                 (
-                                    currentPosition + 3000L
+                                    currentPosition +
+                                        3000L
                                 ).coerceAtMost(
-                                    if (duration > 0L) {
+                                    if (
+                                        duration > 0L
+                                    ) {
                                         duration
                                     } else {
-                                        currentPosition + 3000L
+                                        currentPosition +
+                                            3000L
                                     }
                                 )
 
-                            val newCaption =
-                                Caption(
-                                    id = nextCaptionId,
-                                    text = "کپشن جدید",
-                                    startTime =
-                                        currentPosition,
-                                    endTime =
-                                        defaultEnd
+                            if (
+                                defaultEnd <=
+                                    currentPosition
+                            ) {
+
+                                operationMessage =
+                                    "امکان افزودن کپشن در این زمان وجود ندارد."
+
+                            } else {
+
+                                val newCaption =
+                                    Caption(
+                                        id =
+                                            nextCaptionId,
+                                        text =
+                                            "کپشن جدید",
+                                        startTime =
+                                            currentPosition,
+                                        endTime =
+                                            defaultEnd
+                                    )
+
+                                captions.add(
+                                    newCaption
                                 )
 
-                            captions.add(
-                                newCaption
-                            )
+                                selectedCaptionId =
+                                    nextCaptionId
 
-                            selectedCaptionId =
-                                nextCaptionId
+                                nextCaptionId++
 
-                            nextCaptionId++
+                                operationMessage =
+                                    "کپشن اضافه شد."
+                            }
                         }
                     ) {
                         Text("افزودن")
@@ -455,7 +520,8 @@ private fun CaptionsFaApp() {
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 if (captions.isEmpty()) {
@@ -478,8 +544,21 @@ private fun CaptionsFaApp() {
 
                         items(
                             items = captions,
-                            key = { it.id }
+                            key = {
+                                it.id
+                            }
                         ) { caption ->
+
+                            val captionIndex =
+                                captions.indexOfFirst {
+                                    it.id ==
+                                        caption.id
+                                }
+
+                            val hasNext =
+                                captionIndex >= 0 &&
+                                    captionIndex <
+                                        captions.lastIndex
 
                             CaptionItem(
                                 caption = caption,
@@ -498,21 +577,27 @@ private fun CaptionsFaApp() {
 
                                     currentPosition =
                                         caption.startTime
+
+                                    operationMessage =
+                                        ""
                                 },
 
-                                onTextChange = { newText ->
+                                onTextChange = {
+                                    newText ->
 
                                     updateCaption(
                                         captions,
                                         caption.id
                                     ) {
                                         copy(
-                                            text = newText
+                                            text =
+                                                newText
                                         )
                                     }
                                 },
 
-                                onStartChange = { newStart ->
+                                onStartChange = {
+                                    newStart ->
 
                                     updateCaption(
                                         captions,
@@ -520,14 +605,17 @@ private fun CaptionsFaApp() {
                                     ) {
 
                                         val safeStart =
-                                            newStart.coerceAtLeast(
-                                                0L
-                                            )
+                                            newStart
+                                                .coerceAtLeast(
+                                                    0L
+                                                )
 
                                         val safeEnd =
-                                            endTime.coerceAtLeast(
-                                                safeStart + 1L
-                                            )
+                                            endTime
+                                                .coerceAtLeast(
+                                                    safeStart +
+                                                        1L
+                                                )
 
                                         copy(
                                             startTime =
@@ -538,7 +626,8 @@ private fun CaptionsFaApp() {
                                     }
                                 },
 
-                                onEndChange = { newEnd ->
+                                onEndChange = {
+                                    newEnd ->
 
                                     updateCaption(
                                         captions,
@@ -546,9 +635,11 @@ private fun CaptionsFaApp() {
                                     ) {
 
                                         val safeEnd =
-                                            newEnd.coerceAtLeast(
-                                                startTime + 1L
-                                            )
+                                            newEnd
+                                                .coerceAtLeast(
+                                                    startTime +
+                                                        1L
+                                                )
 
                                         copy(
                                             endTime =
@@ -568,9 +659,11 @@ private fun CaptionsFaApp() {
                                             currentPosition
 
                                         val safeEnd =
-                                            endTime.coerceAtLeast(
-                                                safeStart + 1L
-                                            )
+                                            endTime
+                                                .coerceAtLeast(
+                                                    safeStart +
+                                                        1L
+                                                )
 
                                         copy(
                                             startTime =
@@ -579,6 +672,9 @@ private fun CaptionsFaApp() {
                                                 safeEnd
                                         )
                                     }
+
+                                    operationMessage =
+                                        "شروع کپشن ثبت شد."
                                 },
 
                                 onSetEnd = {
@@ -591,7 +687,8 @@ private fun CaptionsFaApp() {
                                         val safeEnd =
                                             currentPosition
                                                 .coerceAtLeast(
-                                                    startTime + 1L
+                                                    startTime +
+                                                        1L
                                                 )
 
                                         copy(
@@ -599,6 +696,9 @@ private fun CaptionsFaApp() {
                                                 safeEnd
                                         )
                                     }
+
+                                    operationMessage =
+                                        "پایان کپشن ثبت شد."
                                 },
 
                                 onGoToStart = {
@@ -621,6 +721,97 @@ private fun CaptionsFaApp() {
                                         caption.endTime
                                 },
 
+                                onSplit = {
+
+                                    val result =
+                                        splitCaption(
+                                            captions =
+                                                captions,
+                                            captionId =
+                                                caption.id,
+                                            splitTime =
+                                                currentPosition,
+                                            newId =
+                                                nextCaptionId
+                                        )
+
+                                    if (
+                                        result
+                                    ) {
+
+                                        nextCaptionId++
+
+                                        val index =
+                                            captions.indexOfFirst {
+                                                it.id ==
+                                                    caption.id
+                                            }
+
+                                        if (
+                                            index >= 0
+                                        ) {
+
+                                            selectedCaptionId =
+                                                captions[
+                                                    index + 1
+                                                ].id
+                                        }
+
+                                        operationMessage =
+                                            "کپشن در زمان ${formatTime(currentPosition)} تقسیم شد."
+
+                                    } else {
+
+                                        operationMessage =
+                                            "برای Split باید زمان فعلی داخل بازه کپشن باشد."
+                                    }
+                                },
+
+                                onMergeNext = {
+
+                                    if (hasNext) {
+
+                                        val next =
+                                            captions[
+                                                captionIndex +
+                                                    1
+                                            ]
+
+                                        val merged =
+                                            mergeCaptions(
+                                                first =
+                                                    caption,
+                                                second =
+                                                    next
+                                            )
+
+                                        captions[
+                                            captionIndex
+                                        ] = merged
+
+                                        captions.removeAt(
+                                            captionIndex +
+                                                1
+                                        )
+
+                                        selectedCaptionId =
+                                            merged.id
+
+                                        playerReference?.seekTo(
+                                            merged.startTime
+                                        )
+
+                                        currentPosition =
+                                            merged.startTime
+
+                                        operationMessage =
+                                            "کپشن با کپشن بعدی ادغام شد."
+                                    }
+                                },
+
+                                canMergeNext =
+                                    hasNext,
+
                                 onDelete = {
 
                                     captions.removeAll {
@@ -635,9 +826,13 @@ private fun CaptionsFaApp() {
                                         selectedCaptionId =
                                             null
                                     }
+
+                                    operationMessage =
+                                        "کپشن حذف شد."
                                 },
 
-                                onStyleChange = { transform ->
+                                onStyleChange = {
+                                    transform ->
 
                                     updateCaption(
                                         captions,
@@ -684,13 +879,231 @@ private fun updateCaption(
     }
 }
 
+private fun splitCaption(
+    captions: MutableList<Caption>,
+    captionId: Int,
+    splitTime: Long,
+    newId: Int
+): Boolean {
+
+    val index =
+        captions.indexOfFirst {
+            it.id == captionId
+        }
+
+    if (index < 0) {
+        return false
+    }
+
+    val caption =
+        captions[index]
+
+    if (
+        splitTime <= caption.startTime ||
+        splitTime >= caption.endTime
+    ) {
+        return false
+    }
+
+    val totalDuration =
+        caption.endTime -
+            caption.startTime
+
+    if (totalDuration <= 1L) {
+        return false
+    }
+
+    val elapsed =
+        splitTime -
+            caption.startTime
+
+    val ratio =
+        (
+            elapsed.toDouble() /
+                totalDuration.toDouble()
+        ).coerceIn(
+            0.0,
+            1.0
+        )
+
+    val parts =
+        splitCaptionText(
+            caption.text,
+            ratio
+        )
+
+    val firstText =
+        parts.first
+
+    val secondText =
+        parts.second
+
+    val firstCaption =
+        caption.copy(
+            text = firstText,
+            endTime = splitTime
+        )
+
+    val secondCaption =
+        caption.copy(
+            id = newId,
+            text = secondText,
+            startTime = splitTime
+        )
+
+    captions[index] =
+        firstCaption
+
+    captions.add(
+        index + 1,
+        secondCaption
+    )
+
+    return true
+}
+
+private fun splitCaptionText(
+    text: String,
+    ratio: Double
+): Pair<String, String> {
+
+    val trimmed =
+        text.trim()
+
+    if (trimmed.isEmpty()) {
+        return Pair(
+            "کپشن",
+            "کپشن"
+        )
+    }
+
+    val words =
+        trimmed.split(
+            Regex("\\s+")
+        )
+
+    if (words.size <= 1) {
+
+        val cut =
+            (
+                trimmed.length *
+                    ratio
+            )
+                .toInt()
+                .coerceIn(
+                    1,
+                    trimmed.length - 1
+                )
+
+        return Pair(
+            trimmed.substring(
+                0,
+                cut
+            ).trim(),
+            trimmed.substring(
+                cut
+            ).trim()
+        )
+    }
+
+    var bestIndex = 1
+    var bestDifference =
+        Double.MAX_VALUE
+
+    for (
+        index in 1 until words.size
+    ) {
+
+        val currentRatio =
+            index.toDouble() /
+                words.size.toDouble()
+
+        val difference =
+            kotlin.math.abs(
+                currentRatio -
+                    ratio
+            )
+
+        if (
+            difference <
+                bestDifference
+        ) {
+
+            bestDifference =
+                difference
+
+            bestIndex =
+                index
+        }
+    }
+
+    val firstText =
+        words
+            .take(bestIndex)
+            .joinToString(" ")
+
+    val secondText =
+        words
+            .drop(bestIndex)
+            .joinToString(" ")
+
+    return Pair(
+        firstText.ifBlank {
+            "کپشن"
+        },
+        secondText.ifBlank {
+            "کپشن"
+        }
+    )
+}
+
+private fun mergeCaptions(
+    first: Caption,
+    second: Caption
+): Caption {
+
+    val firstText =
+        first.text.trim()
+
+    val secondText =
+        second.text.trim()
+
+    val mergedText =
+        when {
+
+            firstText.isBlank() ->
+                secondText
+
+            secondText.isBlank() ->
+                firstText
+
+            else ->
+                "$firstText $secondText"
+        }
+
+    return first.copy(
+        text = mergedText,
+        startTime =
+            minOf(
+                first.startTime,
+                second.startTime
+            ),
+        endTime =
+            maxOf(
+                first.endTime,
+                second.endTime
+            )
+    )
+}
+
 @Composable
 private fun CaptionOverlay(
     caption: Caption,
     modifier: Modifier
 ) {
 
-    val style = caption.style
+    val style =
+        caption.style
 
     val textColor =
         Color(style.textColor)
@@ -701,8 +1114,11 @@ private fun CaptionOverlay(
     val highlightColor =
         Color(style.highlightColor)
 
-    val enterTransition: EnterTransition
-    val exitTransition: ExitTransition
+    val enterTransition:
+        EnterTransition
+
+    val exitTransition:
+        ExitTransition
 
     when (style.animation) {
 
@@ -720,21 +1136,19 @@ private fun CaptionOverlay(
             enterTransition =
                 fadeIn(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            )
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        )
                 )
 
             exitTransition =
                 fadeOut(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            )
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        )
                 )
         }
 
@@ -743,11 +1157,10 @@ private fun CaptionOverlay(
             enterTransition =
                 slideInVertically(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     initialOffsetY = {
                         it
                     }
@@ -756,11 +1169,10 @@ private fun CaptionOverlay(
             exitTransition =
                 slideOutVertically(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     targetOffsetY = {
                         it
                     }
@@ -772,11 +1184,10 @@ private fun CaptionOverlay(
             enterTransition =
                 slideInVertically(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     initialOffsetY = {
                         -it
                     }
@@ -785,11 +1196,10 @@ private fun CaptionOverlay(
             exitTransition =
                 slideOutVertically(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     targetOffsetY = {
                         -it
                     }
@@ -801,11 +1211,10 @@ private fun CaptionOverlay(
             enterTransition =
                 slideInHorizontally(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     initialOffsetX = {
                         it
                     }
@@ -814,11 +1223,10 @@ private fun CaptionOverlay(
             exitTransition =
                 slideOutHorizontally(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     targetOffsetX = {
                         -it
                     }
@@ -830,11 +1238,10 @@ private fun CaptionOverlay(
             enterTransition =
                 slideInHorizontally(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     initialOffsetX = {
                         -it
                     }
@@ -843,11 +1250,10 @@ private fun CaptionOverlay(
             exitTransition =
                 slideOutHorizontally(
                     animationSpec =
-                        androidx.compose.animation.core
-                            .tween(
-                                durationMillis =
-                                    style.animationDuration
-                            ),
+                        tween(
+                            durationMillis =
+                                style.animationDuration
+                        ),
                     targetOffsetX = {
                         it
                     }
@@ -892,7 +1298,9 @@ private fun CaptionOverlay(
                 Box(
                     modifier = Modifier
                         .clip(
-                            RoundedCornerShape(10.dp)
+                            RoundedCornerShape(
+                                10.dp
+                            )
                         )
                         .background(
                             backgroundColor
@@ -922,10 +1330,17 @@ private fun CaptionOverlay(
                                 FontWeight.Normal
                             },
                         textAlign =
-                            when (style.alignment) {
-                                0 -> TextAlign.Start
-                                2 -> TextAlign.End
-                                else -> TextAlign.Center
+                            when (
+                                style.alignment
+                            ) {
+                                0 ->
+                                    TextAlign.Start
+
+                                2 ->
+                                    TextAlign.End
+
+                                else ->
+                                    TextAlign.Center
                             }
                     )
                 }
@@ -946,6 +1361,9 @@ private fun CaptionItem(
     onSetEnd: () -> Unit,
     onGoToStart: () -> Unit,
     onGoToEnd: () -> Unit,
+    onSplit: () -> Unit,
+    onMergeNext: () -> Unit,
+    canMergeNext: Boolean,
     onDelete: () -> Unit,
     onStyleChange:
         ((CaptionStyle.() -> CaptionStyle) -> Unit)
@@ -955,7 +1373,9 @@ private fun CaptionItem(
         caption.id,
         caption.text
     ) {
-        mutableStateOf(caption.text)
+        mutableStateOf(
+            caption.text
+        )
     }
 
     var startValue by remember(
@@ -1006,7 +1426,8 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier =
+                    Modifier.height(8.dp)
             )
 
             OutlinedTextField(
@@ -1014,6 +1435,7 @@ private fun CaptionItem(
                 onValueChange = {
 
                     textValue = it
+
                     onTextChange(it)
                 },
                 modifier =
@@ -1024,7 +1446,8 @@ private fun CaptionItem(
             )
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier =
+                    Modifier.height(8.dp)
             )
 
             Row(
@@ -1034,7 +1457,8 @@ private fun CaptionItem(
 
                 OutlinedTextField(
                     value = startValue,
-                    onValueChange = { value ->
+                    onValueChange = {
+                        value ->
 
                         if (
                             value.all {
@@ -1042,11 +1466,15 @@ private fun CaptionItem(
                             }
                         ) {
 
-                            startValue = value
+                            startValue =
+                                value
 
-                            value.toLongOrNull()
+                            value
+                                .toLongOrNull()
                                 ?.let {
-                                    onStartChange(it)
+                                    onStartChange(
+                                        it
+                                    )
                                 }
                         }
                     },
@@ -1059,12 +1487,14 @@ private fun CaptionItem(
                 )
 
                 Spacer(
-                    modifier = Modifier.width(8.dp)
+                    modifier =
+                        Modifier.width(8.dp)
                 )
 
                 OutlinedTextField(
                     value = endValue,
-                    onValueChange = { value ->
+                    onValueChange = {
+                        value ->
 
                         if (
                             value.all {
@@ -1072,11 +1502,15 @@ private fun CaptionItem(
                             }
                         ) {
 
-                            endValue = value
+                            endValue =
+                                value
 
-                            value.toLongOrNull()
+                            value
+                                .toLongOrNull()
                                 ?.let {
-                                    onEndChange(it)
+                                    onEndChange(
+                                        it
+                                    )
                                 }
                         }
                     },
@@ -1090,7 +1524,8 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier =
+                    Modifier.height(8.dp)
             )
 
             Row(
@@ -1107,7 +1542,8 @@ private fun CaptionItem(
                 }
 
                 Spacer(
-                    modifier = Modifier.width(8.dp)
+                    modifier =
+                        Modifier.width(8.dp)
                 )
 
                 Button(
@@ -1120,7 +1556,8 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(6.dp)
+                modifier =
+                    Modifier.height(6.dp)
             )
 
             Row(
@@ -1129,7 +1566,8 @@ private fun CaptionItem(
             ) {
 
                 TextButton(
-                    onClick = onGoToStart,
+                    onClick =
+                        onGoToStart,
                     modifier =
                         Modifier.weight(1f)
                 ) {
@@ -1137,7 +1575,8 @@ private fun CaptionItem(
                 }
 
                 TextButton(
-                    onClick = onGoToEnd,
+                    onClick =
+                        onGoToEnd,
                     modifier =
                         Modifier.weight(1f)
                 ) {
@@ -1146,12 +1585,48 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(4.dp)
+                modifier =
+                    Modifier.height(4.dp)
+            )
+
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+
+                OutlinedButton(
+                    onClick = onSplit,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("✂ Split")
+                }
+
+                Spacer(
+                    modifier =
+                        Modifier.width(8.dp)
+                )
+
+                OutlinedButton(
+                    onClick = onMergeNext,
+                    enabled =
+                        canMergeNext,
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
+                    Text("ادغام با بعدی")
+                }
+            }
+
+            Spacer(
+                modifier =
+                    Modifier.height(6.dp)
             )
 
             Button(
                 onClick = {
-                    showStyle = !showStyle
+                    showStyle =
+                        !showStyle
                 },
                 modifier =
                     Modifier.fillMaxWidth()
@@ -1169,7 +1644,8 @@ private fun CaptionItem(
             if (showStyle) {
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
@@ -1181,11 +1657,13 @@ private fun CaptionItem(
                 Slider(
                     value =
                         caption.style.fontSize,
-                    onValueChange = { value ->
+                    onValueChange = {
+                        value ->
 
                         onStyleChange {
                             copy(
-                                fontSize = value
+                                fontSize =
+                                    value
                             )
                         }
                     },
@@ -1194,21 +1672,25 @@ private fun CaptionItem(
                 )
 
                 Spacer(
-                    modifier = Modifier.height(4.dp)
+                    modifier =
+                        Modifier.height(4.dp)
                 )
 
                 Text(
-                    text = "موقعیت عمودی کپشن"
+                    text =
+                        "موقعیت عمودی کپشن"
                 )
 
                 Slider(
                     value =
                         caption.style.position,
-                    onValueChange = { value ->
+                    onValueChange = {
+                        value ->
 
                         onStyleChange {
                             copy(
-                                position = value
+                                position =
+                                    value
                             )
                         }
                     },
@@ -1229,7 +1711,8 @@ private fun CaptionItem(
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Row(
@@ -1240,7 +1723,8 @@ private fun CaptionItem(
                 ) {
 
                     Text(
-                        text = "متن ضخیم",
+                        text =
+                            "متن ضخیم",
                         modifier =
                             Modifier.weight(1f)
                     )
@@ -1248,11 +1732,13 @@ private fun CaptionItem(
                     Switch(
                         checked =
                             caption.style.bold,
-                        onCheckedChange = { checked ->
+                        onCheckedChange = {
+                            checked ->
 
                             onStyleChange {
                                 copy(
-                                    bold = checked
+                                    bold =
+                                        checked
                                 )
                             }
                         }
@@ -1267,15 +1753,18 @@ private fun CaptionItem(
                 ) {
 
                     Text(
-                        text = "هایلایت",
+                        text =
+                            "هایلایت",
                         modifier =
                             Modifier.weight(1f)
                     )
 
                     Switch(
                         checked =
-                            caption.style.highlightEnabled,
-                        onCheckedChange = { checked ->
+                            caption.style
+                                .highlightEnabled,
+                        onCheckedChange = {
+                            checked ->
 
                             onStyleChange {
                                 copy(
@@ -1288,11 +1777,13 @@ private fun CaptionItem(
                 }
 
                 Spacer(
-                    modifier = Modifier.height(4.dp)
+                    modifier =
+                        Modifier.height(4.dp)
                 )
 
                 Text(
-                    text = "تراز متن"
+                    text =
+                        "تراز متن"
                 )
 
                 Row(
@@ -1305,7 +1796,8 @@ private fun CaptionItem(
 
                             onStyleChange {
                                 copy(
-                                    alignment = 0
+                                    alignment =
+                                        0
                                 )
                             }
                         },
@@ -1320,7 +1812,8 @@ private fun CaptionItem(
 
                             onStyleChange {
                                 copy(
-                                    alignment = 1
+                                    alignment =
+                                        1
                                 )
                             }
                         },
@@ -1335,7 +1828,8 @@ private fun CaptionItem(
 
                             onStyleChange {
                                 copy(
-                                    alignment = 2
+                                    alignment =
+                                        2
                                 )
                             }
                         },
@@ -1347,16 +1841,19 @@ private fun CaptionItem(
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
-                    text = "رنگ متن"
+                    text =
+                        "رنگ متن"
                 )
 
                 ColorChoices(
                     selectedColor =
-                        caption.style.textColor,
+                        caption.style
+                            .textColor,
                     colors =
                         listOf(
                             0xFFFFFFFF,
@@ -1366,27 +1863,32 @@ private fun CaptionItem(
                             0xFF69F0AE,
                             0xFF40C4FF
                         ),
-                    onColorSelected = { color ->
+                    onColorSelected = {
+                        color ->
 
                         onStyleChange {
                             copy(
-                                textColor = color
+                                textColor =
+                                    color
                             )
                         }
                     }
                 )
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
-                    text = "رنگ پس‌زمینه"
+                    text =
+                        "رنگ پس‌زمینه"
                 )
 
                 ColorChoices(
                     selectedColor =
-                        caption.style.backgroundColor,
+                        caption.style
+                            .backgroundColor,
                     colors =
                         listOf(
                             0x99000000,
@@ -1396,7 +1898,8 @@ private fun CaptionItem(
                             0x99004640,
                             0x99B71C1C
                         ),
-                    onColorSelected = { color ->
+                    onColorSelected = {
+                        color ->
 
                         onStyleChange {
                             copy(
@@ -1408,16 +1911,19 @@ private fun CaptionItem(
                 )
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
-                    text = "رنگ هایلایت"
+                    text =
+                        "رنگ هایلایت"
                 )
 
                 ColorChoices(
                     selectedColor =
-                        caption.style.highlightColor,
+                        caption.style
+                            .highlightColor,
                     colors =
                         listOf(
                             0xFFFFD54F,
@@ -1427,7 +1933,8 @@ private fun CaptionItem(
                             0xFFFFFFFF,
                             0xFFFF9800
                         ),
-                    onColorSelected = { color ->
+                    onColorSelected = {
+                        color ->
 
                         onStyleChange {
                             copy(
@@ -1439,11 +1946,13 @@ private fun CaptionItem(
                 )
 
                 Spacer(
-                    modifier = Modifier.height(12.dp)
+                    modifier =
+                        Modifier.height(12.dp)
                 )
 
                 Text(
-                    text = "انیمیشن کپشن",
+                    text =
+                        "انیمیشن کپشن",
                     style =
                         MaterialTheme
                             .typography
@@ -1451,20 +1960,24 @@ private fun CaptionItem(
                 )
 
                 Spacer(
-                    modifier = Modifier.height(6.dp)
+                    modifier =
+                        Modifier.height(6.dp)
                 )
 
                 AnimationChoice(
-                    title = "بدون انیمیشن",
+                    title =
+                        "بدون انیمیشن",
                     selected =
-                        caption.style.animation ==
+                        caption.style
+                            .animation ==
                             CaptionAnimation.NONE,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.NONE
+                                    CaptionAnimation
+                                        .NONE
                             )
                         }
                     }
@@ -1473,14 +1986,16 @@ private fun CaptionItem(
                 AnimationChoice(
                     title = "Fade",
                     selected =
-                        caption.style.animation ==
+                        caption.style
+                            .animation ==
                             CaptionAnimation.FADE,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.FADE
+                                    CaptionAnimation
+                                        .FADE
                             )
                         }
                     }
@@ -1489,14 +2004,17 @@ private fun CaptionItem(
                 AnimationChoice(
                     title = "Slide Up",
                     selected =
-                        caption.style.animation ==
-                            CaptionAnimation.SLIDE_UP,
+                        caption.style
+                            .animation ==
+                            CaptionAnimation
+                                .SLIDE_UP,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.SLIDE_UP
+                                    CaptionAnimation
+                                        .SLIDE_UP
                             )
                         }
                     }
@@ -1505,14 +2023,17 @@ private fun CaptionItem(
                 AnimationChoice(
                     title = "Slide Down",
                     selected =
-                        caption.style.animation ==
-                            CaptionAnimation.SLIDE_DOWN,
+                        caption.style
+                            .animation ==
+                            CaptionAnimation
+                                .SLIDE_DOWN,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.SLIDE_DOWN
+                                    CaptionAnimation
+                                        .SLIDE_DOWN
                             )
                         }
                     }
@@ -1521,14 +2042,17 @@ private fun CaptionItem(
                 AnimationChoice(
                     title = "Slide Left",
                     selected =
-                        caption.style.animation ==
-                            CaptionAnimation.SLIDE_LEFT,
+                        caption.style
+                            .animation ==
+                            CaptionAnimation
+                                .SLIDE_LEFT,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.SLIDE_LEFT
+                                    CaptionAnimation
+                                        .SLIDE_LEFT
                             )
                         }
                     }
@@ -1537,21 +2061,25 @@ private fun CaptionItem(
                 AnimationChoice(
                     title = "Slide Right",
                     selected =
-                        caption.style.animation ==
-                            CaptionAnimation.SLIDE_RIGHT,
+                        caption.style
+                            .animation ==
+                            CaptionAnimation
+                                .SLIDE_RIGHT,
                     onClick = {
 
                         onStyleChange {
                             copy(
                                 animation =
-                                    CaptionAnimation.SLIDE_RIGHT
+                                    CaptionAnimation
+                                        .SLIDE_RIGHT
                             )
                         }
                     }
                 )
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
@@ -1565,7 +2093,8 @@ private fun CaptionItem(
                         caption.style
                             .animationDuration
                             .toFloat(),
-                    onValueChange = { value ->
+                    onValueChange = {
+                        value ->
 
                         val durationValue =
                             value
@@ -1599,7 +2128,8 @@ private fun CaptionItem(
             }
 
             Spacer(
-                modifier = Modifier.height(4.dp)
+                modifier =
+                    Modifier.height(4.dp)
             )
 
             TextButton(
@@ -1634,7 +2164,8 @@ private fun AnimationChoice(
     }
 
     Spacer(
-        modifier = Modifier.height(4.dp)
+        modifier =
+            Modifier.height(4.dp)
     )
 }
 
@@ -1655,7 +2186,8 @@ private fun ColorChoices(
         colors.forEach { colorValue ->
 
             val selected =
-                colorValue == selectedColor
+                colorValue ==
+                    selectedColor
 
             Box(
                 modifier = Modifier
@@ -1702,7 +2234,8 @@ private fun Timeline(
     captions: List<Caption>,
     duration: Long,
     selectedCaptionId: Int?,
-    onCaptionSelected: (Int) -> Unit
+    onCaptionSelected:
+        (Int) -> Unit
 ) {
 
     val safeDuration =
@@ -1732,8 +2265,10 @@ private fun Timeline(
 
                 val startFraction =
                     (
-                        caption.startTime.toFloat() /
-                            safeDuration.toFloat()
+                        caption.startTime
+                            .toFloat() /
+                            safeDuration
+                                .toFloat()
                     ).coerceIn(
                         0f,
                         1f
@@ -1741,8 +2276,10 @@ private fun Timeline(
 
                 val endFraction =
                     (
-                        caption.endTime.toFloat() /
-                            safeDuration.toFloat()
+                        caption.endTime
+                            .toFloat() /
+                            safeDuration
+                                .toFloat()
                     ).coerceIn(
                         startFraction,
                         1f
@@ -1765,7 +2302,8 @@ private fun Timeline(
                         .padding(
                             start =
                                 (
-                                    startFraction * 1000
+                                    startFraction *
+                                        1000
                                 ).dp
                         )
                         .clip(
@@ -1789,6 +2327,7 @@ private fun Timeline(
                                 RoundedCornerShape(8.dp)
                         )
                         .clickable {
+
                             onCaptionSelected(
                                 caption.id
                             )
@@ -1796,7 +2335,8 @@ private fun Timeline(
                 ) {
 
                     Text(
-                        text = caption.text,
+                        text =
+                            caption.text,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -1812,7 +2352,8 @@ private fun Timeline(
         }
 
         Spacer(
-            modifier = Modifier.height(4.dp)
+            modifier =
+                Modifier.height(4.dp)
         )
 
         Row(
@@ -1823,7 +2364,8 @@ private fun Timeline(
         ) {
 
             Text(
-                text = "00:00.000",
+                text =
+                    "00:00.000",
                 style =
                     MaterialTheme
                         .typography
@@ -1831,7 +2373,8 @@ private fun Timeline(
             )
 
             Text(
-                text = formatTime(duration),
+                text =
+                    formatTime(duration),
                 style =
                     MaterialTheme
                         .typography
@@ -1844,28 +2387,35 @@ private fun Timeline(
 @Composable
 private fun VideoPreview(
     uri: Uri,
-    onPlayerReady: (ExoPlayer) -> Unit,
-    modifier: Modifier = Modifier
+    onPlayerReady:
+        (ExoPlayer) -> Unit,
+    modifier: Modifier =
+        Modifier
 ) {
 
-    val context = LocalContext.current
+    val context =
+        LocalContext.current
 
-    val player = remember(uri) {
+    val player =
+        remember(uri) {
 
-        ExoPlayer
-            .Builder(context)
-            .build()
-            .apply {
+            ExoPlayer
+                .Builder(context)
+                .build()
+                .apply {
 
-                setMediaItem(
-                    MediaItem.fromUri(uri)
-                )
+                    setMediaItem(
+                        MediaItem.fromUri(
+                            uri
+                        )
+                    )
 
-                prepare()
+                    prepare()
 
-                playWhenReady = false
-            }
-    }
+                    playWhenReady =
+                        false
+                }
+        }
 
     LaunchedEffect(player) {
         onPlayerReady(player)
@@ -1881,13 +2431,18 @@ private fun VideoPreview(
     AndroidView(
         modifier = modifier,
 
-        factory = { viewContext ->
+        factory = {
+            viewContext ->
 
-            PlayerView(viewContext).apply {
+            PlayerView(
+                viewContext
+            ).apply {
 
-                this.player = player
+                this.player =
+                    player
 
-                useController = true
+                useController =
+                    true
             }
         }
     )
@@ -1898,7 +2453,9 @@ private fun formatTime(
 ): String {
 
     val safe =
-        milliseconds.coerceAtLeast(0L)
+        milliseconds.coerceAtLeast(
+            0L
+        )
 
     val totalSeconds =
         safe / 1000L
