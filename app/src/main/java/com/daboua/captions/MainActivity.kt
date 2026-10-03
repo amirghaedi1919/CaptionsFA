@@ -112,6 +112,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CaptionsFaApp() {
 
+    val context = LocalContext.current
+
     var videoUri by remember {
         mutableStateOf<Uri?>(null)
     }
@@ -157,14 +159,142 @@ private fun CaptionsFaApp() {
             operationMessage = ""
         }
 
+    val srtImporter =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts.OpenDocument()
+        ) { uri ->
+
+            if (uri == null) {
+                return@rememberLauncherForActivityResult
+            }
+
+            try {
+
+                val content =
+                    context.contentResolver
+                        .openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.use {
+                            it.readText()
+                        }
+
+                if (content.isNullOrBlank()) {
+
+                    operationMessage =
+                        "فایل SRT خالی است."
+
+                } else {
+
+                    val imported =
+                        parseSrt(
+                            content
+                        )
+
+                    if (imported.isEmpty()) {
+
+                        operationMessage =
+                            "هیچ کپشن معتبری در فایل SRT پیدا نشد."
+
+                    } else {
+
+                        captions.clear()
+
+                        imported.forEachIndexed {
+                            index,
+                            parsed ->
+
+                            captions.add(
+                                Caption(
+                                    id =
+                                        index + 1,
+                                    text =
+                                        parsed.text,
+                                    startTime =
+                                        parsed.startTime,
+                                    endTime =
+                                        parsed.endTime
+                                )
+                            )
+                        }
+
+                        nextCaptionId =
+                            imported.size + 1
+
+                        selectedCaptionId =
+                            captions.firstOrNull()
+                                ?.id
+
+                        operationMessage =
+                            "${imported.size} کپشن از فایل SRT وارد شد."
+                    }
+                }
+
+            } catch (
+                exception: Exception
+            ) {
+
+                operationMessage =
+                    "خطا در خواندن فایل SRT: " +
+                        (
+                            exception.message
+                                ?: "خطای نامشخص"
+                        )
+            }
+        }
+
+    val srtExporter =
+        rememberLauncherForActivityResult(
+            contract =
+                ActivityResultContracts.CreateDocument(
+                    "application/x-subrip"
+                )
+        ) { uri ->
+
+            if (uri == null) {
+                return@rememberLauncherForActivityResult
+            }
+
+            try {
+
+                val srtText =
+                    buildSrt(
+                        captions
+                    )
+
+                context.contentResolver
+                    .openOutputStream(uri)
+                    ?.bufferedWriter()
+                    ?.use {
+                        it.write(srtText)
+                    }
+
+                operationMessage =
+                    "${captions.size} کپشن با موفقیت به SRT صادر شد."
+
+            } catch (
+                exception: Exception
+            ) {
+
+                operationMessage =
+                    "خطا در ذخیره SRT: " +
+                        (
+                            exception.message
+                                ?: "خطای نامشخص"
+                        )
+            }
+        }
+
     LaunchedEffect(playerReference) {
 
         while (playerReference != null) {
 
-            val player = playerReference
+            val player =
+                playerReference
 
             currentPosition =
-                player?.currentPosition ?: 0L
+                player?.currentPosition
+                    ?: 0L
 
             duration =
                 player?.duration
@@ -180,14 +310,17 @@ private fun CaptionsFaApp() {
     val activeCaption =
         captions.firstOrNull {
 
-            currentPosition >= it.startTime &&
-                currentPosition <= it.endTime
+            currentPosition >=
+                it.startTime &&
+                currentPosition <=
+                it.endTime
         }
 
     MaterialTheme {
 
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier =
+                Modifier.fillMaxSize(),
             color =
                 MaterialTheme
                     .colorScheme
@@ -195,13 +328,15 @@ private fun CaptionsFaApp() {
         ) {
 
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
             ) {
 
                 Text(
-                    text = "Captions FA",
+                    text =
+                        "Captions FA",
                     style =
                         MaterialTheme
                             .typography
@@ -209,30 +344,99 @@ private fun CaptionsFaApp() {
                 )
 
                 Spacer(
-                    modifier = Modifier.height(12.dp)
+                    modifier =
+                        Modifier.height(12.dp)
                 )
 
                 Button(
                     onClick = {
-                        videoPicker.launch("video/*")
+                        videoPicker.launch(
+                            "video/*"
+                        )
                     },
                     modifier =
                         Modifier.fillMaxWidth()
                 ) {
 
-                    Text("انتخاب ویدئو")
+                    Text(
+                        "انتخاب ویدئو"
+                    )
                 }
 
                 Spacer(
-                    modifier = Modifier.height(12.dp)
+                    modifier =
+                        Modifier.height(8.dp)
+                )
+
+                Row(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
+
+                    OutlinedButton(
+                        onClick = {
+
+                            srtImporter.launch(
+                                arrayOf(
+                                    "application/x-subrip",
+                                    "text/plain",
+                                    "*/*"
+                                )
+                            )
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+
+                        Text(
+                            "📥 وارد کردن SRT"
+                        )
+                    }
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(8.dp)
+                    )
+
+                    OutlinedButton(
+                        onClick = {
+
+                            if (
+                                captions.isEmpty()
+                            ) {
+
+                                operationMessage =
+                                    "ابتدا حداقل یک کپشن اضافه کنید."
+
+                            } else {
+
+                                srtExporter.launch(
+                                    "captions.srt"
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+
+                        Text(
+                            "📤 خروجی SRT"
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier =
+                        Modifier.height(12.dp)
                 )
 
                 if (videoUri == null) {
 
                     Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(220.dp),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(220.dp),
                         horizontalAlignment =
                             Alignment.CenterHorizontally,
                         verticalArrangement =
@@ -240,32 +444,38 @@ private fun CaptionsFaApp() {
                     ) {
 
                         Text(
-                            text =
-                                "هنوز ویدئویی انتخاب نشده"
+                            "هنوز ویدئویی انتخاب نشده"
                         )
                     }
 
                 } else {
 
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp)
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
                     ) {
 
                         VideoPreview(
-                            uri = videoUri!!,
-                            onPlayerReady = { player ->
-                                playerReference = player
+                            uri =
+                                videoUri!!,
+                            onPlayerReady = {
+                                player ->
+                                playerReference =
+                                    player
                             },
                             modifier =
                                 Modifier.fillMaxSize()
                         )
 
-                        if (activeCaption != null) {
+                        if (
+                            activeCaption != null
+                        ) {
 
                             CaptionOverlay(
-                                caption = activeCaption,
+                                caption =
+                                    activeCaption,
                                 modifier =
                                     Modifier.fillMaxSize()
                             )
@@ -274,7 +484,8 @@ private fun CaptionsFaApp() {
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Text(
@@ -302,39 +513,45 @@ private fun CaptionsFaApp() {
                         color =
                             MaterialTheme
                                 .colorScheme
-                                .primary,
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyMedium
+                                .primary
                     )
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
-                if (duration > 0L) {
+                if (
+                    duration > 0L
+                ) {
 
                     Timeline(
-                        captions = captions,
-                        duration = duration,
+                        captions =
+                            captions,
+                        duration =
+                            duration,
                         selectedCaptionId =
                             selectedCaptionId,
-                        onCaptionSelected = { id ->
+                        onCaptionSelected = {
+                            id ->
 
-                            selectedCaptionId = id
+                            selectedCaptionId =
+                                id
 
                             val caption =
                                 captions.firstOrNull {
                                     it.id == id
                                 }
 
-                            if (caption != null) {
+                            if (
+                                caption != null
+                            ) {
 
-                                playerReference?.seekTo(
-                                    caption.startTime
-                                )
+                                playerReference
+                                    ?.seekTo(
+                                        caption.startTime
+                                    )
 
                                 currentPosition =
                                     caption.startTime
@@ -344,7 +561,8 @@ private fun CaptionsFaApp() {
                 }
 
                 Spacer(
-                    modifier = Modifier.height(8.dp)
+                    modifier =
+                        Modifier.height(8.dp)
                 )
 
                 Row(
@@ -365,14 +583,16 @@ private fun CaptionsFaApp() {
                                     0L
                                 )
 
-                            playerReference?.seekTo(
-                                newPosition
-                            )
+                            playerReference
+                                ?.seekTo(
+                                    newPosition
+                                )
 
                             currentPosition =
                                 newPosition
                         }
                     ) {
+
                         Text("-5s")
                     }
 
@@ -384,17 +604,18 @@ private fun CaptionsFaApp() {
                     Button(
                         onClick = {
 
-                            playerReference?.let {
-                                player ->
+                            playerReference
+                                ?.let {
+                                    player ->
 
-                                if (
-                                    player.isPlaying
-                                ) {
-                                    player.pause()
-                                } else {
-                                    player.play()
+                                    if (
+                                        player.isPlaying
+                                    ) {
+                                        player.pause()
+                                    } else {
+                                        player.play()
+                                    }
                                 }
-                            }
                         }
                     ) {
 
@@ -427,14 +648,16 @@ private fun CaptionsFaApp() {
                                     duration
                                 )
 
-                            playerReference?.seekTo(
-                                newPosition
-                            )
+                            playerReference
+                                ?.seekTo(
+                                    newPosition
+                                )
 
                             currentPosition =
                                 newPosition
                         }
                     ) {
+
                         Text("+5s")
                     }
                 }
@@ -452,7 +675,8 @@ private fun CaptionsFaApp() {
                 ) {
 
                     Text(
-                        text = "کپشن‌ها",
+                        text =
+                            "کپشن‌ها",
                         style =
                             MaterialTheme
                                 .typography
@@ -515,7 +739,10 @@ private fun CaptionsFaApp() {
                             }
                         }
                     ) {
-                        Text("افزودن")
+
+                        Text(
+                            "افزودن"
+                        )
                     }
                 }
 
@@ -524,7 +751,9 @@ private fun CaptionsFaApp() {
                         Modifier.height(8.dp)
                 )
 
-                if (captions.isEmpty()) {
+                if (
+                    captions.isEmpty()
+                ) {
 
                     Text(
                         text =
@@ -543,7 +772,8 @@ private fun CaptionsFaApp() {
                     ) {
 
                         items(
-                            items = captions,
+                            items =
+                                captions,
                             key = {
                                 it.id
                             }
@@ -561,7 +791,9 @@ private fun CaptionsFaApp() {
                                         captions.lastIndex
 
                             CaptionItem(
-                                caption = caption,
+                                caption =
+                                    caption,
+
                                 selected =
                                     selectedCaptionId ==
                                         caption.id,
@@ -571,9 +803,10 @@ private fun CaptionsFaApp() {
                                     selectedCaptionId =
                                         caption.id
 
-                                    playerReference?.seekTo(
-                                        caption.startTime
-                                    )
+                                    playerReference
+                                        ?.seekTo(
+                                            caption.startTime
+                                        )
 
                                     currentPosition =
                                         caption.startTime
@@ -589,6 +822,7 @@ private fun CaptionsFaApp() {
                                         captions,
                                         caption.id
                                     ) {
+
                                         copy(
                                             text =
                                                 newText
@@ -703,9 +937,10 @@ private fun CaptionsFaApp() {
 
                                 onGoToStart = {
 
-                                    playerReference?.seekTo(
-                                        caption.startTime
-                                    )
+                                    playerReference
+                                        ?.seekTo(
+                                            caption.startTime
+                                        )
 
                                     currentPosition =
                                         caption.startTime
@@ -713,9 +948,10 @@ private fun CaptionsFaApp() {
 
                                 onGoToEnd = {
 
-                                    playerReference?.seekTo(
-                                        caption.endTime
-                                    )
+                                    playerReference
+                                        ?.seekTo(
+                                            caption.endTime
+                                        )
 
                                     currentPosition =
                                         caption.endTime
@@ -742,13 +978,16 @@ private fun CaptionsFaApp() {
                                         nextCaptionId++
 
                                         val index =
-                                            captions.indexOfFirst {
-                                                it.id ==
-                                                    caption.id
-                                            }
+                                            captions
+                                                .indexOfFirst {
+                                                    it.id ==
+                                                        caption.id
+                                                }
 
                                         if (
-                                            index >= 0
+                                            index >= 0 &&
+                                            index + 1 <
+                                                captions.size
                                         ) {
 
                                             selectedCaptionId =
@@ -769,7 +1008,9 @@ private fun CaptionsFaApp() {
 
                                 onMergeNext = {
 
-                                    if (hasNext) {
+                                    if (
+                                        hasNext
+                                    ) {
 
                                         val next =
                                             captions[
@@ -777,40 +1018,54 @@ private fun CaptionsFaApp() {
                                                     1
                                             ]
 
-                                        val merged =
-                                            mergeCaptions(
-                                                first =
-                                                    caption,
-                                                second =
-                                                    next
+                                        if (
+                                            next.startTime <=
+                                                caption.endTime
+                                        ) {
+
+                                            val merged =
+                                                mergeCaptions(
+                                                    first =
+                                                        caption,
+                                                    second =
+                                                        next
+                                                )
+
+                                            captions[
+                                                captionIndex
+                                            ] =
+                                                merged
+
+                                            captions.removeAt(
+                                                captionIndex +
+                                                    1
                                             )
 
-                                        captions[
-                                            captionIndex
-                                        ] = merged
+                                            selectedCaptionId =
+                                                merged.id
 
-                                        captions.removeAt(
-                                            captionIndex +
-                                                1
-                                        )
+                                            operationMessage =
+                                                "کپشن با کپشن بعدی ادغام شد."
 
-                                        selectedCaptionId =
-                                            merged.id
+                                        } else {
 
-                                        playerReference?.seekTo(
-                                            merged.startTime
-                                        )
-
-                                        currentPosition =
-                                            merged.startTime
-
-                                        operationMessage =
-                                            "کپشن با کپشن بعدی ادغام شد."
+                                            operationMessage =
+                                                "برای ادغام، دو کپشن باید به هم چسبیده یا هم‌پوشان باشند."
+                                        }
                                     }
                                 },
 
                                 canMergeNext =
-                                    hasNext,
+                                    hasNext &&
+                                        captionIndex >=
+                                            0 &&
+                                        captionIndex <
+                                            captions.lastIndex &&
+                                        captions[
+                                            captionIndex +
+                                                1
+                                        ].startTime <=
+                                            caption.endTime,
 
                                 onDelete = {
 
@@ -823,6 +1078,7 @@ private fun CaptionsFaApp() {
                                         selectedCaptionId ==
                                             caption.id
                                     ) {
+
                                         selectedCaptionId =
                                             null
                                     }
@@ -859,6 +1115,290 @@ private fun CaptionsFaApp() {
     }
 }
 
+private data class ParsedSrtCaption(
+    val text: String,
+    val startTime: Long,
+    val endTime: Long
+)
+
+private fun parseSrt(
+    content: String
+): List<ParsedSrtCaption> {
+
+    val normalized =
+        content
+            .replace(
+                "\r\n",
+                "\n"
+            )
+            .replace(
+                "\r",
+                "\n"
+            )
+
+    val blocks =
+        normalized
+            .split(
+                Regex(
+                    "\n\\s*\n"
+                )
+            )
+
+    val result =
+        mutableListOf<ParsedSrtCaption>()
+
+    for (
+        block in blocks
+    ) {
+
+        val lines =
+            block
+                .lines()
+                .map {
+                    it.trimEnd()
+                }
+
+        if (
+            lines.isEmpty()
+        ) {
+            continue
+        }
+
+        val timeLineIndex =
+            lines.indexOfFirst {
+                it.contains("-->")
+            }
+
+        if (
+            timeLineIndex < 0
+        ) {
+            continue
+        }
+
+        val timeLine =
+            lines[
+                timeLineIndex
+            ]
+
+        val timeParts =
+            timeLine
+                .split(
+                    "-->"
+                )
+
+        if (
+            timeParts.size < 2
+        ) {
+            continue
+        }
+
+        val start =
+            parseSrtTime(
+                timeParts[0].trim()
+            )
+
+        val end =
+            parseSrtTime(
+                timeParts[1]
+                    .trim()
+                    .split(
+                        " "
+                    )
+                    .firstOrNull()
+                        ?: ""
+            )
+
+        if (
+            start == null ||
+            end == null ||
+            end <= start
+        ) {
+            continue
+        }
+
+        val text =
+            lines
+                .drop(
+                    timeLineIndex + 1
+                )
+                .joinToString(
+                    "\n"
+                )
+                .trim()
+
+        if (
+            text.isBlank()
+        ) {
+            continue
+        }
+
+        result.add(
+            ParsedSrtCaption(
+                text =
+                    text,
+                startTime =
+                    start,
+                endTime =
+                    end
+            )
+        )
+    }
+
+    return result.sortedBy {
+        it.startTime
+    }
+}
+
+private fun parseSrtTime(
+    value: String
+): Long? {
+
+    val cleaned =
+        value.trim()
+
+    val regex =
+        Regex(
+            "(\\d{1,2}):(\\d{2}):(\\d{2})[,\\.](\\d{3})"
+        )
+
+    val match =
+        regex.find(
+            cleaned
+        ) ?: return null
+
+    val hours =
+        match.groupValues[1]
+            .toLongOrNull()
+            ?: return null
+
+    val minutes =
+        match.groupValues[2]
+            .toLongOrNull()
+            ?: return null
+
+    val seconds =
+        match.groupValues[3]
+            .toLongOrNull()
+            ?: return null
+
+    val millis =
+        match.groupValues[4]
+            .toLongOrNull()
+            ?: return null
+
+    if (
+        minutes > 59 ||
+        seconds > 59
+    ) {
+        return null
+    }
+
+    return (
+        hours * 60L * 60L * 1000L
+    ) +
+        (
+            minutes * 60L * 1000L
+        ) +
+        (
+            seconds * 1000L
+        ) +
+        millis
+}
+
+private fun buildSrt(
+    captions: List<Caption>
+): String {
+
+    val sorted =
+        captions.sortedWith(
+            compareBy<Caption> {
+                it.startTime
+            }.thenBy {
+                it.endTime
+            }
+        )
+
+    val builder =
+        StringBuilder()
+
+    sorted.forEachIndexed {
+        index,
+        caption ->
+
+        builder.append(
+            index + 1
+        )
+
+        builder.append(
+            "\n"
+        )
+
+        builder.append(
+            formatSrtTime(
+                caption.startTime
+            )
+        )
+
+        builder.append(
+            " --> "
+        )
+
+        builder.append(
+            formatSrtTime(
+                caption.endTime
+            )
+        )
+
+        builder.append(
+            "\n"
+        )
+
+        builder.append(
+            caption.text.trim()
+        )
+
+        builder.append(
+            "\n\n"
+        )
+    }
+
+    return builder.toString()
+}
+
+private fun formatSrtTime(
+    milliseconds: Long
+): String {
+
+    val safe =
+        milliseconds.coerceAtLeast(
+            0L
+        )
+
+    val hours =
+        safe / 3_600_000L
+
+    val minutes =
+        (
+            safe % 3_600_000L
+        ) / 60_000L
+
+    val seconds =
+        (
+            safe % 60_000L
+        ) / 1000L
+
+    val millis =
+        safe % 1000L
+
+    return String.format(
+        "%02d:%02d:%02d,%03d",
+        hours,
+        minutes,
+        seconds,
+        millis
+    )
+}
+
 private fun updateCaption(
     captions: MutableList<Caption>,
     id: Int,
@@ -870,7 +1410,9 @@ private fun updateCaption(
             it.id == id
         }
 
-    if (index >= 0) {
+    if (
+        index >= 0
+    ) {
 
         captions[index] =
             transform(
@@ -891,7 +1433,9 @@ private fun splitCaption(
             it.id == captionId
         }
 
-    if (index < 0) {
+    if (
+        index < 0
+    ) {
         return false
     }
 
@@ -899,8 +1443,10 @@ private fun splitCaption(
         captions[index]
 
     if (
-        splitTime <= caption.startTime ||
-        splitTime >= caption.endTime
+        splitTime <=
+            caption.startTime ||
+        splitTime >=
+            caption.endTime
     ) {
         return false
     }
@@ -909,7 +1455,9 @@ private fun splitCaption(
         caption.endTime -
             caption.startTime
 
-    if (totalDuration <= 1L) {
+    if (
+        totalDuration <= 1L
+    ) {
         return false
     }
 
@@ -932,23 +1480,22 @@ private fun splitCaption(
             ratio
         )
 
-    val firstText =
-        parts.first
-
-    val secondText =
-        parts.second
-
     val firstCaption =
         caption.copy(
-            text = firstText,
-            endTime = splitTime
+            text =
+                parts.first,
+            endTime =
+                splitTime
         )
 
     val secondCaption =
         caption.copy(
-            id = newId,
-            text = secondText,
-            startTime = splitTime
+            id =
+                newId,
+            text =
+                parts.second,
+            startTime =
+                splitTime
         )
 
     captions[index] =
@@ -970,7 +1517,10 @@ private fun splitCaptionText(
     val trimmed =
         text.trim()
 
-    if (trimmed.isEmpty()) {
+    if (
+        trimmed.isEmpty()
+    ) {
+
         return Pair(
             "کپشن",
             "کپشن"
@@ -979,10 +1529,24 @@ private fun splitCaptionText(
 
     val words =
         trimmed.split(
-            Regex("\\s+")
+            Regex(
+                "\\s+"
+            )
         )
 
-    if (words.size <= 1) {
+    if (
+        words.size <= 1
+    ) {
+
+        if (
+            trimmed.length <= 1
+        ) {
+
+            return Pair(
+                trimmed,
+                trimmed
+            )
+        }
 
         val cut =
             (
@@ -1006,7 +1570,9 @@ private fun splitCaptionText(
         )
     }
 
-    var bestIndex = 1
+    var bestIndex =
+        1
+
     var bestDifference =
         Double.MAX_VALUE
 
@@ -1039,13 +1605,21 @@ private fun splitCaptionText(
 
     val firstText =
         words
-            .take(bestIndex)
-            .joinToString(" ")
+            .take(
+                bestIndex
+            )
+            .joinToString(
+                " "
+            )
 
     val secondText =
         words
-            .drop(bestIndex)
-            .joinToString(" ")
+            .drop(
+                bestIndex
+            )
+            .joinToString(
+                " "
+            )
 
     return Pair(
         firstText.ifBlank {
@@ -1082,7 +1656,8 @@ private fun mergeCaptions(
         }
 
     return first.copy(
-        text = mergedText,
+        text =
+            mergedText,
         startTime =
             minOf(
                 first.startTime,
@@ -1106,13 +1681,19 @@ private fun CaptionOverlay(
         caption.style
 
     val textColor =
-        Color(style.textColor)
+        Color(
+            style.textColor
+        )
 
     val backgroundColor =
-        Color(style.backgroundColor)
+        Color(
+            style.backgroundColor
+        )
 
     val highlightColor =
-        Color(style.highlightColor)
+        Color(
+            style.highlightColor
+        )
 
     val enterTransition:
         EnterTransition
@@ -1120,7 +1701,9 @@ private fun CaptionOverlay(
     val exitTransition:
         ExitTransition
 
-    when (style.animation) {
+    when (
+        style.animation
+    ) {
 
         CaptionAnimation.NONE -> {
 
@@ -1262,7 +1845,8 @@ private fun CaptionOverlay(
     }
 
     Box(
-        modifier = modifier
+        modifier =
+            modifier
     ) {
 
         val verticalAlignment =
@@ -1279,40 +1863,45 @@ private fun CaptionOverlay(
             }
 
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 12.dp
-                ),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 12.dp
+                    ),
             contentAlignment =
                 verticalAlignment
         ) {
 
             AnimatedVisibility(
                 visible = true,
-                enter = enterTransition,
-                exit = exitTransition
+                enter =
+                    enterTransition,
+                exit =
+                    exitTransition
             ) {
 
                 Box(
-                    modifier = Modifier
-                        .clip(
-                            RoundedCornerShape(
-                                10.dp
+                    modifier =
+                        Modifier
+                            .clip(
+                                RoundedCornerShape(
+                                    10.dp
+                                )
                             )
-                        )
-                        .background(
-                            backgroundColor
-                        )
-                        .padding(
-                            horizontal = 14.dp,
-                            vertical = 8.dp
-                        )
+                            .background(
+                                backgroundColor
+                            )
+                            .padding(
+                                horizontal = 14.dp,
+                                vertical = 8.dp
+                            )
                 ) {
 
                     Text(
-                        text = caption.text,
+                        text =
+                            caption.text,
                         color =
                             if (
                                 style.highlightEnabled
@@ -1324,7 +1913,9 @@ private fun CaptionOverlay(
                         fontSize =
                             style.fontSize.sp,
                         fontWeight =
-                            if (style.bold) {
+                            if (
+                                style.bold
+                            ) {
                                 FontWeight.Bold
                             } else {
                                 FontWeight.Normal
@@ -1333,6 +1924,7 @@ private fun CaptionOverlay(
                             when (
                                 style.alignment
                             ) {
+
                                 0 ->
                                     TextAlign.Start
 
@@ -1373,6 +1965,7 @@ private fun CaptionItem(
         caption.id,
         caption.text
     ) {
+
         mutableStateOf(
             caption.text
         )
@@ -1382,6 +1975,7 @@ private fun CaptionItem(
         caption.id,
         caption.startTime
     ) {
+
         mutableStateOf(
             caption.startTime.toString()
         )
@@ -1391,6 +1985,7 @@ private fun CaptionItem(
         caption.id,
         caption.endTime
     ) {
+
         mutableStateOf(
             caption.endTime.toString()
         )
@@ -1411,13 +2006,16 @@ private fun CaptionItem(
         ) {
 
             Button(
-                onClick = onSelect,
+                onClick =
+                    onSelect,
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
 
                 Text(
-                    if (selected) {
+                    if (
+                        selected
+                    ) {
                         "کپشن انتخاب شده"
                     } else {
                         "انتخاب این کپشن"
@@ -1431,17 +2029,23 @@ private fun CaptionItem(
             )
 
             OutlinedTextField(
-                value = textValue,
+                value =
+                    textValue,
                 onValueChange = {
 
-                    textValue = it
+                    textValue =
+                        it
 
-                    onTextChange(it)
+                    onTextChange(
+                        it
+                    )
                 },
                 modifier =
                     Modifier.fillMaxWidth(),
                 label = {
-                    Text("متن کپشن")
+                    Text(
+                        "متن کپشن"
+                    )
                 }
             )
 
@@ -1456,7 +2060,8 @@ private fun CaptionItem(
             ) {
 
                 OutlinedTextField(
-                    value = startValue,
+                    value =
+                        startValue,
                     onValueChange = {
                         value ->
 
@@ -1481,7 +2086,9 @@ private fun CaptionItem(
                     modifier =
                         Modifier.weight(1f),
                     label = {
-                        Text("شروع (ms)")
+                        Text(
+                            "شروع (ms)"
+                        )
                     },
                     singleLine = true
                 )
@@ -1492,7 +2099,8 @@ private fun CaptionItem(
                 )
 
                 OutlinedTextField(
-                    value = endValue,
+                    value =
+                        endValue,
                     onValueChange = {
                         value ->
 
@@ -1517,7 +2125,9 @@ private fun CaptionItem(
                     modifier =
                         Modifier.weight(1f),
                     label = {
-                        Text("پایان (ms)")
+                        Text(
+                            "پایان (ms)"
+                        )
                     },
                     singleLine = true
                 )
@@ -1534,11 +2144,15 @@ private fun CaptionItem(
             ) {
 
                 Button(
-                    onClick = onSetStart,
+                    onClick =
+                        onSetStart,
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("ثبت شروع")
+
+                    Text(
+                        "ثبت شروع"
+                    )
                 }
 
                 Spacer(
@@ -1547,11 +2161,15 @@ private fun CaptionItem(
                 )
 
                 Button(
-                    onClick = onSetEnd,
+                    onClick =
+                        onSetEnd,
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("ثبت پایان")
+
+                    Text(
+                        "ثبت پایان"
+                    )
                 }
             }
 
@@ -1571,7 +2189,10 @@ private fun CaptionItem(
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("↤ شروع")
+
+                    Text(
+                        "↤ شروع"
+                    )
                 }
 
                 TextButton(
@@ -1580,7 +2201,10 @@ private fun CaptionItem(
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("پایان ↦")
+
+                    Text(
+                        "پایان ↦"
+                    )
                 }
             }
 
@@ -1595,11 +2219,15 @@ private fun CaptionItem(
             ) {
 
                 OutlinedButton(
-                    onClick = onSplit,
+                    onClick =
+                        onSplit,
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("✂ Split")
+
+                    Text(
+                        "✂ Split"
+                    )
                 }
 
                 Spacer(
@@ -1608,13 +2236,17 @@ private fun CaptionItem(
                 )
 
                 OutlinedButton(
-                    onClick = onMergeNext,
+                    onClick =
+                        onMergeNext,
                     enabled =
                         canMergeNext,
                     modifier =
                         Modifier.weight(1f)
                 ) {
-                    Text("ادغام با بعدی")
+
+                    Text(
+                        "ادغام با بعدی"
+                    )
                 }
             }
 
@@ -1625,6 +2257,7 @@ private fun CaptionItem(
 
             Button(
                 onClick = {
+
                     showStyle =
                         !showStyle
                 },
@@ -1633,7 +2266,9 @@ private fun CaptionItem(
             ) {
 
                 Text(
-                    if (showStyle) {
+                    if (
+                        showStyle
+                    ) {
                         "بستن تنظیمات استایل"
                     } else {
                         "تنظیمات استایل"
@@ -1641,7 +2276,9 @@ private fun CaptionItem(
                 )
             }
 
-            if (showStyle) {
+            if (
+                showStyle
+            ) {
 
                 Spacer(
                     modifier =
@@ -1649,9 +2286,8 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "اندازه فونت: " +
-                            "${caption.style.fontSize.toInt()}"
+                    "اندازه فونت: " +
+                        "${caption.style.fontSize.toInt()}"
                 )
 
                 Slider(
@@ -1677,8 +2313,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "موقعیت عمودی کپشن"
+                    "موقعیت عمودی کپشن"
                 )
 
                 Slider(
@@ -1723,8 +2358,7 @@ private fun CaptionItem(
                 ) {
 
                     Text(
-                        text =
-                            "متن ضخیم",
+                        "متن ضخیم",
                         modifier =
                             Modifier.weight(1f)
                     )
@@ -1753,8 +2387,7 @@ private fun CaptionItem(
                 ) {
 
                     Text(
-                        text =
-                            "هایلایت",
+                        "هایلایت",
                         modifier =
                             Modifier.weight(1f)
                     )
@@ -1782,8 +2415,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "تراز متن"
+                    "تراز متن"
                 )
 
                 Row(
@@ -1804,7 +2436,10 @@ private fun CaptionItem(
                         modifier =
                             Modifier.weight(1f)
                     ) {
-                        Text("چپ")
+
+                        Text(
+                            "چپ"
+                        )
                     }
 
                     TextButton(
@@ -1820,7 +2455,10 @@ private fun CaptionItem(
                         modifier =
                             Modifier.weight(1f)
                     ) {
-                        Text("وسط")
+
+                        Text(
+                            "وسط"
+                        )
                     }
 
                     TextButton(
@@ -1836,7 +2474,10 @@ private fun CaptionItem(
                         modifier =
                             Modifier.weight(1f)
                     ) {
-                        Text("راست")
+
+                        Text(
+                            "راست"
+                        )
                     }
                 }
 
@@ -1846,8 +2487,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "رنگ متن"
+                    "رنگ متن"
                 )
 
                 ColorChoices(
@@ -1881,8 +2521,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "رنگ پس‌زمینه"
+                    "رنگ پس‌زمینه"
                 )
 
                 ColorChoices(
@@ -1916,8 +2555,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "رنگ هایلایت"
+                    "رنگ هایلایت"
                 )
 
                 ColorChoices(
@@ -1951,8 +2589,7 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "انیمیشن کپشن",
+                    "انیمیشن کپشن",
                     style =
                         MaterialTheme
                             .typography
@@ -1984,7 +2621,8 @@ private fun CaptionItem(
                 )
 
                 AnimationChoice(
-                    title = "Fade",
+                    title =
+                        "Fade",
                     selected =
                         caption.style
                             .animation ==
@@ -2002,7 +2640,8 @@ private fun CaptionItem(
                 )
 
                 AnimationChoice(
-                    title = "Slide Up",
+                    title =
+                        "Slide Up",
                     selected =
                         caption.style
                             .animation ==
@@ -2021,7 +2660,8 @@ private fun CaptionItem(
                 )
 
                 AnimationChoice(
-                    title = "Slide Down",
+                    title =
+                        "Slide Down",
                     selected =
                         caption.style
                             .animation ==
@@ -2040,7 +2680,8 @@ private fun CaptionItem(
                 )
 
                 AnimationChoice(
-                    title = "Slide Left",
+                    title =
+                        "Slide Left",
                     selected =
                         caption.style
                             .animation ==
@@ -2059,7 +2700,8 @@ private fun CaptionItem(
                 )
 
                 AnimationChoice(
-                    title = "Slide Right",
+                    title =
+                        "Slide Right",
                     selected =
                         caption.style
                             .animation ==
@@ -2083,9 +2725,8 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text =
-                        "مدت انیمیشن: " +
-                            "${caption.style.animationDuration} ms"
+                    "مدت انیمیشن: " +
+                        "${caption.style.animationDuration} ms"
                 )
 
                 Slider(
@@ -2122,8 +2763,13 @@ private fun CaptionItem(
                         Arrangement.SpaceBetween
                 ) {
 
-                    Text("100ms")
-                    Text("1500ms")
+                    Text(
+                        "100ms"
+                    )
+
+                    Text(
+                        "1500ms"
+                    )
                 }
             }
 
@@ -2133,9 +2779,13 @@ private fun CaptionItem(
             )
 
             TextButton(
-                onClick = onDelete
+                onClick =
+                    onDelete
             ) {
-                Text("حذف کپشن")
+
+                Text(
+                    "حذف کپشن"
+                )
             }
         }
     }
@@ -2149,13 +2799,16 @@ private fun AnimationChoice(
 ) {
 
     OutlinedButton(
-        onClick = onClick,
+        onClick =
+            onClick,
         modifier =
             Modifier.fillMaxWidth()
     ) {
 
         Text(
-            if (selected) {
+            if (
+                selected
+            ) {
                 "✓ $title"
             } else {
                 title
@@ -2173,7 +2826,8 @@ private fun AnimationChoice(
 private fun ColorChoices(
     selectedColor: Long,
     colors: List<Long>,
-    onColorSelected: (Long) -> Unit
+    onColorSelected:
+        (Long) -> Unit
 ) {
 
     Row(
@@ -2183,47 +2837,60 @@ private fun ColorChoices(
             Arrangement.spacedBy(8.dp)
     ) {
 
-        colors.forEach { colorValue ->
+        colors.forEach {
+            colorValue ->
 
             val selected =
                 colorValue ==
                     selectedColor
 
             Box(
-                modifier = Modifier
-                    .width(42.dp)
-                    .height(42.dp)
-                    .clip(
-                        RoundedCornerShape(8.dp)
-                    )
-                    .background(
-                        Color(colorValue)
-                    )
-                    .border(
-                        width =
-                            if (selected) {
-                                3.dp
-                            } else {
-                                1.dp
-                            },
-                        color =
-                            if (selected) {
-                                MaterialTheme
-                                    .colorScheme
-                                    .primary
-                            } else {
-                                MaterialTheme
-                                    .colorScheme
-                                    .outline
-                            },
-                        shape =
-                            RoundedCornerShape(8.dp)
-                    )
-                    .clickable {
-                        onColorSelected(
-                            colorValue
+                modifier =
+                    Modifier
+                        .width(42.dp)
+                        .height(42.dp)
+                        .clip(
+                            RoundedCornerShape(
+                                8.dp
+                            )
                         )
-                    }
+                        .background(
+                            Color(
+                                colorValue
+                            )
+                        )
+                        .border(
+                            width =
+                                if (
+                                    selected
+                                ) {
+                                    3.dp
+                                } else {
+                                    1.dp
+                                },
+                            color =
+                                if (
+                                    selected
+                                ) {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary
+                                } else {
+                                    MaterialTheme
+                                        .colorScheme
+                                        .outline
+                                },
+                            shape =
+                                RoundedCornerShape(
+                                    8.dp
+                                )
+                        )
+                        .clickable {
+
+                            onColorSelected(
+                                colorValue
+                            )
+                        }
             )
         }
     }
@@ -2239,7 +2906,9 @@ private fun Timeline(
 ) {
 
     val safeDuration =
-        duration.coerceAtLeast(1L)
+        duration.coerceAtLeast(
+            1L
+        )
 
     Column(
         modifier =
@@ -2247,21 +2916,25 @@ private fun Timeline(
     ) {
 
         Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(70.dp)
-                .clip(
-                    RoundedCornerShape(10.dp)
-                )
-                .background(
-                    MaterialTheme
-                        .colorScheme
-                        .surfaceVariant
-                )
-                .padding(6.dp)
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(70.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            10.dp
+                        )
+                    )
+                    .background(
+                        MaterialTheme
+                            .colorScheme
+                            .surfaceVariant
+                    )
+                    .padding(6.dp)
         ) {
 
-            captions.forEach { caption ->
+            captions.forEach {
+                caption ->
 
                 val startFraction =
                     (
@@ -2294,44 +2967,51 @@ private fun Timeline(
                     )
 
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth(
-                            widthFraction
-                        )
-                        .height(58.dp)
-                        .padding(
-                            start =
-                                (
-                                    startFraction *
-                                        1000
-                                ).dp
-                        )
-                        .clip(
-                            RoundedCornerShape(8.dp)
-                        )
-                        .border(
-                            width =
-                                if (
-                                    selectedCaptionId ==
-                                        caption.id
-                                ) {
-                                    2.dp
-                                } else {
-                                    1.dp
-                                },
-                            color =
-                                MaterialTheme
-                                    .colorScheme
-                                    .primary,
-                            shape =
-                                RoundedCornerShape(8.dp)
-                        )
-                        .clickable {
-
-                            onCaptionSelected(
-                                caption.id
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(
+                                widthFraction
                             )
-                        }
+                            .height(
+                                58.dp
+                            )
+                            .padding(
+                                start =
+                                    (
+                                        startFraction *
+                                            1000
+                                    ).dp
+                            )
+                            .clip(
+                                RoundedCornerShape(
+                                    8.dp
+                                )
+                            )
+                            .border(
+                                width =
+                                    if (
+                                        selectedCaptionId ==
+                                            caption.id
+                                    ) {
+                                        2.dp
+                                    } else {
+                                        1.dp
+                                    },
+                                color =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .primary,
+                                shape =
+                                    RoundedCornerShape(
+                                        8.dp
+                                    )
+                            )
+                            .clickable {
+
+                                onCaptionSelected(
+                                    caption.id
+                                )
+                            }
                 ) {
 
                     Text(
@@ -2364,8 +3044,7 @@ private fun Timeline(
         ) {
 
             Text(
-                text =
-                    "00:00.000",
+                "00:00.000",
                 style =
                     MaterialTheme
                         .typography
@@ -2373,8 +3052,9 @@ private fun Timeline(
             )
 
             Text(
-                text =
-                    formatTime(duration),
+                formatTime(
+                    duration
+                ),
                 style =
                     MaterialTheme
                         .typography
@@ -2400,7 +3080,9 @@ private fun VideoPreview(
         remember(uri) {
 
             ExoPlayer
-                .Builder(context)
+                .Builder(
+                    context
+                )
                 .build()
                 .apply {
 
@@ -2417,11 +3099,18 @@ private fun VideoPreview(
                 }
         }
 
-    LaunchedEffect(player) {
-        onPlayerReady(player)
+    LaunchedEffect(
+        player
+    ) {
+
+        onPlayerReady(
+            player
+        )
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(
+        player
+    ) {
 
         onDispose {
             player.release()
@@ -2429,8 +3118,8 @@ private fun VideoPreview(
     }
 
     AndroidView(
-        modifier = modifier,
-
+        modifier =
+            modifier,
         factory = {
             viewContext ->
 
