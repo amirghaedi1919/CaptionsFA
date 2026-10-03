@@ -1,6 +1,5 @@
 package com.daboua.captions
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -72,14 +71,8 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.DataOutputStream
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
 
@@ -175,23 +168,6 @@ fun CaptionsFaApp() {
         mutableStateOf<ExoPlayer?>(null)
     }
 
-    val prefs =
-        remember {
-            context.getSharedPreferences(
-                "captions_fa_demo",
-                Context.MODE_PRIVATE
-            )
-        }
-
-    var apiKey by remember {
-        mutableStateOf(
-            prefs.getString(
-                "api_key",
-                ""
-            ) ?: ""
-        )
-    }
-
     val videoPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument()
@@ -219,7 +195,7 @@ fun CaptionsFaApp() {
                 nextCaptionId = 1
 
                 message =
-                    "ویدیو انتخاب شد؛ حالا «ساخت خودکار کپشن» را بزن"
+                    "ویدیو انتخاب شد؛ حالا «ساخت خودکار کپشن فارسی» را بزن"
             }
         }
 
@@ -447,6 +423,7 @@ fun CaptionsFaApp() {
     LaunchedEffect(activeCaption?.id) {
 
         if (activeCaption != null) {
+
             selectedCaptionId =
                 activeCaption.id
         }
@@ -455,8 +432,10 @@ fun CaptionsFaApp() {
     MaterialTheme {
 
         Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFF101010)
+            modifier =
+                Modifier.fillMaxSize(),
+            color =
+                Color(0xFF101010)
         ) {
 
             Column(
@@ -492,47 +471,6 @@ fun CaptionsFaApp() {
                         Modifier.height(10.dp)
                 )
 
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = {
-                        apiKey = it
-
-                        prefs.edit()
-                            .putString(
-                                "api_key",
-                                it
-                            )
-                            .apply()
-                    },
-                    label = {
-                        Text("OpenAI API Key")
-                    },
-                    placeholder = {
-                        Text("sk-...")
-                    },
-                    modifier =
-                        Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(6.dp)
-                )
-
-                Text(
-                    text =
-                        "کلید فقط برای تست روی همین گوشی ذخیره می‌شود.",
-                    color =
-                        Color(0xFFFFD54F),
-                    fontSize = 11.sp
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.height(10.dp)
-                )
-
                 Row(
                     modifier =
                         Modifier.fillMaxWidth(),
@@ -542,6 +480,7 @@ fun CaptionsFaApp() {
 
                     Button(
                         onClick = {
+
                             videoPicker.launch(
                                 arrayOf("video/*")
                             )
@@ -554,6 +493,7 @@ fun CaptionsFaApp() {
 
                     OutlinedButton(
                         onClick = {
+
                             srtImportPicker.launch(
                                 arrayOf(
                                     "text/plain",
@@ -582,26 +522,18 @@ fun CaptionsFaApp() {
                             message =
                                 "اول یک ویدیو انتخاب کن"
 
-                        } else if (
-                            apiKey.isBlank()
-                        ) {
-
-                            message =
-                                "اول API Key را وارد کن"
-
-                        } else if (
-                            isTranscribing
-                        ) {
+                        } else if (isTranscribing) {
 
                             message =
                                 "در حال ساخت کپشن است..."
 
                         } else {
 
-                            isTranscribing = true
+                            isTranscribing =
+                                true
 
                             message =
-                                "در حال ارسال ویدیو و ساخت کپشن..."
+                                "در حال آماده‌سازی Whisper و پردازش ویدیو..."
 
                             val uri =
                                 videoUri!!
@@ -611,13 +543,12 @@ fun CaptionsFaApp() {
                                 try {
 
                                     val result =
-                                        transcribeVideo(
+                                        LocalWhisper.transcribeVideo(
                                             context =
                                                 context,
                                             uri =
                                                 uri,
-                                            apiKey =
-                                                apiKey
+                                            threads = 4
                                         )
 
                                     Handler(
@@ -643,7 +574,8 @@ fun CaptionsFaApp() {
                                             )
                                         }
 
-                                        nextCaptionId = id
+                                        nextCaptionId =
+                                            id
 
                                         selectedCaptionId =
                                             captions
@@ -657,9 +589,9 @@ fun CaptionsFaApp() {
                                             if (
                                                 result.isEmpty()
                                             ) {
-                                                "گفتاری پیدا نشد"
+                                                "گفتاری قابل تشخیص پیدا نشد"
                                             } else {
-                                                "${result.size} کپشن خودکار ساخته شد"
+                                                "${result.size} کپشن فارسی خودکار ساخته شد"
                                             }
                                     }
 
@@ -688,9 +620,30 @@ fun CaptionsFaApp() {
 
                     Text(
                         if (isTranscribing)
-                            "⏳ در حال ساخت کپشن..."
+                            "⏳ در حال ساخت کپشن فارسی..."
                         else
                             "✨ ساخت خودکار کپشن فارسی"
+                    )
+                }
+
+                if (isTranscribing) {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(4.dp)
+                    )
+
+                    Text(
+                        text =
+                            "در اولین اجرا ممکن است مدل Whisper دانلود شود؛ " +
+                                "بعد از آن مدل روی خود گوشی استفاده می‌شود.",
+                        color =
+                            Color(0xFFFFD54F),
+                        fontSize = 11.sp,
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        textAlign =
+                            TextAlign.Center
                     )
                 }
 
@@ -712,6 +665,7 @@ fun CaptionsFaApp() {
 
                     OutlinedButton(
                         onClick = {
+
                             srtExportPicker.launch(
                                 "captions.srt"
                             )
@@ -722,6 +676,7 @@ fun CaptionsFaApp() {
 
                     OutlinedButton(
                         onClick = {
+
                             projectSavePicker.launch(
                                 "captions_project.json"
                             )
@@ -732,6 +687,7 @@ fun CaptionsFaApp() {
 
                     OutlinedButton(
                         onClick = {
+
                             projectOpenPicker.launch(
                                 arrayOf(
                                     "application/json",
@@ -756,6 +712,8 @@ fun CaptionsFaApp() {
                         uri = uri,
                         currentPosition =
                             currentPosition,
+                        activeCaption =
+                            activeCaption,
                         onPlayerReady = {
                             playerReference = it
                         }
@@ -915,12 +873,15 @@ fun CaptionsFaApp() {
                                 videoDuration >
                                     start
                             ) {
+
                                 (
                                     start + 2000L
                                     ).coerceAtMost(
                                         videoDuration
                                     )
+
                             } else {
+
                                 start + 2000L
                             }
 
@@ -977,6 +938,7 @@ fun CaptionsFaApp() {
                                 captions,
                                 id
                             ) {
+
                                 it.copy(
                                     startTime =
                                         currentPosition
@@ -1004,6 +966,7 @@ fun CaptionsFaApp() {
                                 captions,
                                 id
                             ) {
+
                                 it.copy(
                                     endTime =
                                         currentPosition
@@ -1019,6 +982,7 @@ fun CaptionsFaApp() {
                         captions.firstOrNull {
                             it.id == id
                         }?.let {
+
                             playerReference
                                 ?.seekTo(
                                     it.startTime
@@ -1030,6 +994,7 @@ fun CaptionsFaApp() {
                         captions.firstOrNull {
                             it.id == id
                         }?.let {
+
                             playerReference
                                 ?.seekTo(
                                     it.endTime
@@ -1042,256 +1007,11 @@ fun CaptionsFaApp() {
     }
 }
 
-private data class TranscriptSegment(
-    val text: String,
-    val startTime: Long,
-    val endTime: Long
-)
-
-private fun transcribeVideo(
-    context: Context,
-    uri: Uri,
-    apiKey: String
-): List<TranscriptSegment> {
-
-    val connection =
-        URL(
-            "https://api.openai.com/v1/audio/transcriptions"
-        ).openConnection()
-            as HttpURLConnection
-
-    val boundary =
-        "----CaptionsFA${System.currentTimeMillis()}"
-
-    connection.requestMethod = "POST"
-
-    connection.setRequestProperty(
-        "Authorization",
-        "Bearer ${apiKey.trim()}"
-    )
-
-    connection.setRequestProperty(
-        "Content-Type",
-        "multipart/form-data; boundary=$boundary"
-    )
-
-    connection.setRequestProperty(
-        "Accept",
-        "application/json"
-    )
-
-    connection.doOutput = true
-    connection.doInput = true
-    connection.connectTimeout = 60_000
-    connection.readTimeout = 300_000
-
-    val output =
-        DataOutputStream(
-            connection.outputStream
-        )
-
-    fun writeField(
-        name: String,
-        value: String
-    ) {
-
-        output.writeBytes(
-            "--$boundary\r\n"
-        )
-
-        output.writeBytes(
-            "Content-Disposition: form-data; name=\"$name\"\r\n\r\n"
-        )
-
-        output.writeBytes(
-            "$value\r\n"
-        )
-    }
-
-    writeField(
-        "model",
-        "whisper-1"
-    )
-
-    writeField(
-        "language",
-        "fa"
-    )
-
-    writeField(
-        "response_format",
-        "verbose_json"
-    )
-
-    writeField(
-        "timestamp_granularities[]",
-        "segment"
-    )
-
-    writeField(
-        "temperature",
-        "0"
-    )
-
-    val mime =
-        context.contentResolver
-            .getType(uri)
-            ?: "video/mp4"
-
-    output.writeBytes(
-        "--$boundary\r\n"
-    )
-
-    output.writeBytes(
-        "Content-Disposition: form-data; " +
-            "name=\"file\"; " +
-            "filename=\"video.mp4\"\r\n"
-    )
-
-    output.writeBytes(
-        "Content-Type: $mime\r\n\r\n"
-    )
-
-    context.contentResolver
-        .openInputStream(uri)
-        ?.use { input ->
-
-            val buffer =
-                ByteArray(16 * 1024)
-
-            while (true) {
-
-                val count =
-                    input.read(buffer)
-
-                if (count <= 0) {
-                    break
-                }
-
-                output.write(
-                    buffer,
-                    0,
-                    count
-                )
-            }
-        }
-        ?: throw Exception(
-            "فایل ویدئو قابل خواندن نیست"
-        )
-
-    output.writeBytes(
-        "\r\n--$boundary--\r\n"
-    )
-
-    output.flush()
-    output.close()
-
-    val responseCode =
-        connection.responseCode
-
-    val stream =
-        if (responseCode in 200..299) {
-            connection.inputStream
-        } else {
-            connection.errorStream
-        }
-
-    val response =
-        if (stream != null) {
-            BufferedReader(
-                InputStreamReader(stream)
-            ).use {
-                it.readText()
-            }
-        } else {
-            ""
-        }
-
-    connection.disconnect()
-
-    if (responseCode !in 200..299) {
-
-        val errorMessage =
-            try {
-                JSONObject(response)
-                    .optJSONObject("error")
-                    ?.optString(
-                        "message"
-                    )
-            } catch (_: Exception) {
-                null
-            }
-
-        throw Exception(
-            errorMessage
-                ?: "خطای API: HTTP $responseCode"
-        )
-    }
-
-    val root =
-        JSONObject(response)
-
-    val segments =
-        root.optJSONArray(
-            "segments"
-        ) ?: return emptyList()
-
-    val result =
-        mutableListOf<TranscriptSegment>()
-
-    for (
-        index in
-        0 until segments.length()
-    ) {
-
-        val item =
-            segments.optJSONObject(index)
-                ?: continue
-
-        val text =
-            item.optString(
-                "text",
-                ""
-            ).trim()
-
-        val start =
-            item.optDouble(
-                "start",
-                0.0
-            )
-
-        val end =
-            item.optDouble(
-                "end",
-                0.0
-            )
-
-        if (
-            text.isNotBlank() &&
-            end > start
-        ) {
-
-            result.add(
-                TranscriptSegment(
-                    text = text,
-                    startTime =
-                        (start * 1000.0)
-                            .roundToLong(),
-                    endTime =
-                        (end * 1000.0)
-                            .roundToLong()
-                )
-            )
-        }
-    }
-
-    return result
-}
-
 @Composable
 private fun VideoPreview(
     uri: Uri,
     currentPosition: Long,
+    activeCaption: Caption?,
     onPlayerReady: (ExoPlayer) -> Unit
 ) {
 
@@ -1326,23 +1046,55 @@ private fun VideoPreview(
         }
     }
 
-    AndroidView(
-        factory = { ctx ->
-
-            PlayerView(ctx).apply {
-
-                this.player = player
-                useController = true
-            }
-        },
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .height(230.dp)
+                .height(300.dp)
                 .clip(
                     RoundedCornerShape(12.dp)
                 )
-    )
+    ) {
+
+        AndroidView(
+            factory = { ctx ->
+
+                PlayerView(ctx).apply {
+
+                    this.player =
+                        player
+
+                    useController =
+                        true
+                }
+            },
+            modifier =
+                Modifier.fillMaxSize()
+        )
+
+        activeCaption?.let { caption ->
+
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(
+                            horizontal = 8.dp
+                        ),
+                contentAlignment =
+                    Alignment.TopCenter
+            ) {
+
+                CaptionOverlay(
+                    caption = caption,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1585,6 +1337,7 @@ private fun CaptionCard(
     }
 
     LaunchedEffect(caption.text) {
+
         if (text != caption.text) {
             text = caption.text
         }
@@ -1635,6 +1388,7 @@ private fun CaptionCard(
                 TextButton(
                     onClick = onSelect
                 ) {
+
                     Text(
                         if (selected)
                             "انتخاب شده"
@@ -1651,6 +1405,7 @@ private fun CaptionCard(
                 TextButton(
                     onClick = onDelete
                 ) {
+
                     Text(
                         "حذف",
                         color =
@@ -1666,6 +1421,7 @@ private fun CaptionCard(
                     text = value
 
                     onUpdate {
+
                         it.copy(
                             text = value
                         )
@@ -1773,7 +1529,9 @@ private fun CaptionCard(
                 value =
                     style.fontSize,
                 onValueChange = { value ->
+
                     onUpdate {
+
                         it.copy(
                             style =
                                 it.style.copy(
@@ -1791,6 +1549,7 @@ private fun CaptionCard(
                 onClick = {
 
                     onUpdate {
+
                         it.copy(
                             style =
                                 it.style.copy(
@@ -1801,6 +1560,7 @@ private fun CaptionCard(
                     }
                 }
             ) {
+
                 Text(
                     if (style.bold)
                         "✓ Bold"
@@ -1824,7 +1584,9 @@ private fun CaptionCard(
                 value =
                     style.position,
                 onValueChange = { value ->
+
                     onUpdate {
+
                         it.copy(
                             style =
                                 it.style.copy(
@@ -1863,6 +1625,7 @@ private fun CaptionCard(
                         onClick = {
 
                             onUpdate {
+
                                 it.copy(
                                     style =
                                         it.style.copy(
@@ -1909,6 +1672,7 @@ private fun CaptionCard(
                             onClick = {
 
                                 onUpdate {
+
                                     it.copy(
                                         style =
                                             it.style.copy(
@@ -1955,6 +1719,7 @@ private fun CaptionOverlay(
 
     val horizontalAlignment =
         when (style.alignment) {
+
             "LEFT" ->
                 Alignment.CenterStart
 
@@ -1967,6 +1732,7 @@ private fun CaptionOverlay(
 
     val textAlign =
         when (style.alignment) {
+
             "LEFT" ->
                 TextAlign.Left
 
@@ -1982,9 +1748,6 @@ private fun CaptionOverlay(
             modifier
                 .clip(
                     RoundedCornerShape(8.dp)
-                )
-                .background(
-                    Color(0xFF181818)
                 )
     ) {
 
@@ -2196,7 +1959,7 @@ private fun updateCaption(
 
 private fun parseSrt(
     content: String
-): List<TranscriptSegment> {
+): List<LocalTranscriptSegment> {
 
     val normalized =
         content
@@ -2209,7 +1972,7 @@ private fun parseSrt(
         )
 
     val result =
-        mutableListOf<TranscriptSegment>()
+        mutableListOf<LocalTranscriptSegment>()
 
     for (block in blocks) {
 
@@ -2264,7 +2027,7 @@ private fun parseSrt(
         if (text.isNotBlank()) {
 
             result.add(
-                TranscriptSegment(
+                LocalTranscriptSegment(
                     text = text,
                     startTime = start,
                     endTime = end
@@ -2408,7 +2171,7 @@ private fun buildProjectJson(
 
     root.put(
         "version",
-        2
+        3
     )
 
     root.put(
@@ -2554,6 +2317,7 @@ private fun parseProjectJson(
         ) {
             null
         } else {
+
             root.optInt(
                 "selectedCaptionId",
                 -1
@@ -2604,6 +2368,96 @@ private fun parseProjectJson(
             continue
         }
 
+        val styleJson =
+            item.optJSONObject(
+                "style"
+            )
+
+        val animation =
+            try {
+
+                CaptionAnimation.valueOf(
+                    styleJson?.optString(
+                        "animation",
+                        CaptionAnimation.NONE.name
+                    )
+                        ?: CaptionAnimation.NONE.name
+                )
+
+            } catch (_: Exception) {
+
+                CaptionAnimation.NONE
+            }
+
+        val style =
+            CaptionStyle(
+                fontSize =
+                    styleJson?.optDouble(
+                        "fontSize",
+                        28.0
+                    )?.toFloat()
+                        ?: 28f,
+
+                textColor =
+                    styleJson?.optLong(
+                        "textColor",
+                        0xFFFFFFFF
+                    )
+                        ?: 0xFFFFFFFF,
+
+                backgroundColor =
+                    styleJson?.optLong(
+                        "backgroundColor",
+                        0x99000000
+                    )
+                        ?: 0x99000000,
+
+                bold =
+                    styleJson?.optBoolean(
+                        "bold",
+                        false
+                    )
+                        ?: false,
+
+                alignment =
+                    styleJson?.optString(
+                        "alignment",
+                        "CENTER"
+                    )
+                        ?: "CENTER",
+
+                position =
+                    styleJson?.optDouble(
+                        "position",
+                        0.82
+                    )?.toFloat()
+                        ?: 0.82f,
+
+                highlightEnabled =
+                    styleJson?.optBoolean(
+                        "highlightEnabled",
+                        false
+                    )
+                        ?: false,
+
+                highlightColor =
+                    styleJson?.optLong(
+                        "highlightColor",
+                        0xFFFFD54F
+                    )
+                        ?: 0xFFFFD54F,
+
+                animation =
+                    animation,
+
+                animationDuration =
+                    styleJson?.optInt(
+                        "animationDuration",
+                        350
+                    )
+                        ?: 350
+            )
+
         result.add(
             Caption(
                 id =
@@ -2613,15 +2467,21 @@ private fun parseProjectJson(
                     ),
                 text = text,
                 startTime = start,
-                endTime = end
+                endTime = end,
+                style = style
             )
         )
     }
 
     return LoadedProject(
-        captions = result,
-        videoUri = savedVideo,
-        selectedCaptionId = selected
+        captions =
+            result.sortedBy {
+                it.startTime
+            },
+        videoUri =
+            savedVideo,
+        selectedCaptionId =
+            selected
     )
 }
 
