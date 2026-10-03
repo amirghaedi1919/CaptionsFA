@@ -33,8 +33,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +78,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
@@ -256,10 +255,8 @@ fun CaptionsFaApp() {
                                 Caption(
                                     id = id++,
                                     text = item.text,
-                                    startTime =
-                                        item.startTime,
-                                    endTime =
-                                        item.endTime
+                                    startTime = item.startTime,
+                                    endTime = item.endTime
                                 )
                             )
                         }
@@ -602,6 +599,7 @@ fun CaptionsFaApp() {
                         } else {
 
                             isTranscribing = true
+
                             message =
                                 "در حال ارسال ویدیو و ساخت کپشن..."
 
@@ -1077,6 +1075,11 @@ private fun transcribeVideo(
         "multipart/form-data; boundary=$boundary"
     )
 
+    connection.setRequestProperty(
+        "Accept",
+        "application/json"
+    )
+
     connection.doOutput = true
     connection.doInput = true
     connection.connectTimeout = 60_000
@@ -1194,10 +1197,14 @@ private fun transcribeVideo(
         }
 
     val response =
-        BufferedReader(
-            InputStreamReader(stream)
-        ).use {
-            it.readText()
+        if (stream != null) {
+            BufferedReader(
+                InputStreamReader(stream)
+            ).use {
+                it.readText()
+            }
+        } else {
+            ""
         }
 
     connection.disconnect()
