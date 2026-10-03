@@ -1,6 +1,5 @@
 package com.daboua.captions
 
-import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -460,9 +459,6 @@ private fun CaptionsFaApp() {
                                     selectedCaptionId ==
                                         caption.id,
 
-                                currentPosition =
-                                    currentPosition,
-
                                 onSelect = {
 
                                     selectedCaptionId =
@@ -611,6 +607,20 @@ private fun CaptionsFaApp() {
                                         selectedCaptionId =
                                             null
                                     }
+                                },
+
+                                onStyleChange = { transform ->
+
+                                    updateCaption(
+                                        captions,
+                                        caption.id
+                                    ) {
+
+                                        copy(
+                                            style =
+                                                style.transform()
+                                        )
+                                    }
                                 }
                             )
 
@@ -623,6 +633,26 @@ private fun CaptionsFaApp() {
                 }
             }
         }
+    }
+}
+
+private fun updateCaption(
+    captions: MutableList<Caption>,
+    id: Int,
+    transform: Caption.() -> Caption
+) {
+
+    val index =
+        captions.indexOfFirst {
+            it.id == id
+        }
+
+    if (index >= 0) {
+
+        captions[index] =
+            transform(
+                captions[index]
+            )
     }
 }
 
@@ -704,7 +734,6 @@ private fun CaptionOverlay(
 private fun CaptionItem(
     caption: Caption,
     selected: Boolean,
-    currentPosition: Long,
     onSelect: () -> Unit,
     onTextChange: (String) -> Unit,
     onStartChange: (Long) -> Unit,
@@ -713,7 +742,9 @@ private fun CaptionItem(
     onSetEnd: () -> Unit,
     onGoToStart: () -> Unit,
     onGoToEnd: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onStyleChange:
+        ((CaptionStyle.() -> CaptionStyle) -> Unit)
 ) {
 
     var textValue by remember(
@@ -743,42 +774,6 @@ private fun CaptionItem(
 
     var showStyle by remember {
         mutableStateOf(false)
-    }
-
-    var fontSize by remember(
-        caption.id,
-        caption.style.fontSize
-    ) {
-        mutableStateOf(
-            caption.style.fontSize
-        )
-    }
-
-    var bold by remember(
-        caption.id,
-        caption.style.bold
-    ) {
-        mutableStateOf(
-            caption.style.bold
-        )
-    }
-
-    var highlight by remember(
-        caption.id,
-        caption.style.highlightEnabled
-    ) {
-        mutableStateOf(
-            caption.style.highlightEnabled
-        )
-    }
-
-    var alignment by remember(
-        caption.id,
-        caption.style.alignment
-    ) {
-        mutableStateOf(
-            caption.style.alignment
-        )
     }
 
     Card(
@@ -966,26 +961,26 @@ private fun CaptionItem(
                 )
 
                 Text(
-                    text = "اندازه فونت: ${fontSize.toInt()}",
+                    text =
+                        "اندازه فونت: " +
+                            "${caption.style.fontSize.toInt()}",
                     style =
                         MaterialTheme.typography.bodyMedium
                 )
 
                 Slider(
-                    value = fontSize,
+                    value =
+                        caption.style.fontSize,
                     onValueChange = { value ->
 
-                        fontSize = value
-
-                        updateCaptionStyle(
-                            caption
-                        ) {
+                        onStyleChange {
                             copy(
                                 fontSize = value
                             )
                         }
                     },
-                    valueRange = 14f..64f
+                    valueRange =
+                        14f..64f
                 )
 
                 Row(
@@ -1001,14 +996,11 @@ private fun CaptionItem(
                     )
 
                     Switch(
-                        checked = bold,
+                        checked =
+                            caption.style.bold,
                         onCheckedChange = { checked ->
 
-                            bold = checked
-
-                            updateCaptionStyle(
-                                caption
-                            ) {
+                            onStyleChange {
                                 copy(
                                     bold = checked
                                 )
@@ -1030,14 +1022,11 @@ private fun CaptionItem(
                     )
 
                     Switch(
-                        checked = highlight,
+                        checked =
+                            caption.style.highlightEnabled,
                         onCheckedChange = { checked ->
 
-                            highlight = checked
-
-                            updateCaptionStyle(
-                                caption
-                            ) {
+                            onStyleChange {
                                 copy(
                                     highlightEnabled =
                                         checked
@@ -1062,11 +1051,7 @@ private fun CaptionItem(
                     TextButton(
                         onClick = {
 
-                            alignment = 0
-
-                            updateCaptionStyle(
-                                caption
-                            ) {
+                            onStyleChange {
                                 copy(
                                     alignment = 0
                                 )
@@ -1081,11 +1066,7 @@ private fun CaptionItem(
                     TextButton(
                         onClick = {
 
-                            alignment = 1
-
-                            updateCaptionStyle(
-                                caption
-                            ) {
+                            onStyleChange {
                                 copy(
                                     alignment = 1
                                 )
@@ -1100,11 +1081,7 @@ private fun CaptionItem(
                     TextButton(
                         onClick = {
 
-                            alignment = 2
-
-                            updateCaptionStyle(
-                                caption
-                            ) {
+                            onStyleChange {
                                 copy(
                                     alignment = 2
                                 )
@@ -1119,8 +1096,8 @@ private fun CaptionItem(
 
                 Text(
                     text =
-                        "رنگ متن و هایلایت در نسخه بعدی " +
-                            "به انتخاب‌گر رنگ تبدیل می‌شود.",
+                        "رنگ متن، رنگ پس‌زمینه و " +
+                            "رنگ هایلایت در مرحله بعد اضافه می‌شود.",
                     style =
                         MaterialTheme.typography.bodySmall
                 )
@@ -1137,13 +1114,6 @@ private fun CaptionItem(
             }
         }
     }
-}
-
-private fun updateCaptionStyle(
-    caption: Caption,
-    transform: CaptionStyle.() -> CaptionStyle
-) {
-    // تغییر استایل در مرحله بعد از طریق state اصلی اعمال می‌شود.
 }
 
 @Composable
