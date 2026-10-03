@@ -19,6 +19,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -77,7 +80,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
-import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 class MainActivity : ComponentActivity() {
 
@@ -1266,12 +1269,10 @@ private fun transcribeVideo(
                     text = text,
                     startTime =
                         (start * 1000.0)
-                            .roundToInt()
-                            .toLong(),
+                            .roundToLong(),
                     endTime =
                         (end * 1000.0)
-                            .roundToInt()
-                            .toLong()
+                            .roundToLong()
                 )
             )
         }
@@ -2053,19 +2054,17 @@ private fun animationEnter(
         CaptionAnimation.FADE ->
             fadeIn(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Float>(
-                            duration
-                        )
+                    tween<Float>(
+                        duration
+                    )
             )
 
         CaptionAnimation.SLIDE_UP ->
             slideInVertically(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 initialOffsetY = {
                     it
                 }
@@ -2074,10 +2073,9 @@ private fun animationEnter(
         CaptionAnimation.SLIDE_DOWN ->
             slideInVertically(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 initialOffsetY = {
                     -it
                 }
@@ -2086,10 +2084,9 @@ private fun animationEnter(
         CaptionAnimation.SLIDE_LEFT ->
             slideInHorizontally(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 initialOffsetX = {
                     it
                 }
@@ -2098,10 +2095,9 @@ private fun animationEnter(
         CaptionAnimation.SLIDE_RIGHT ->
             slideInHorizontally(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 initialOffsetX = {
                     -it
                 }
@@ -2120,19 +2116,17 @@ private fun animationExit(
         CaptionAnimation.FADE ->
             fadeOut(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Float>(
-                            duration
-                        )
+                    tween<Float>(
+                        duration
+                    )
             )
 
         CaptionAnimation.SLIDE_UP ->
             slideOutVertically(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 targetOffsetY = {
                     -it
                 }
@@ -2141,10 +2135,9 @@ private fun animationExit(
         CaptionAnimation.SLIDE_DOWN ->
             slideOutVertically(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 targetOffsetY = {
                     it
                 }
@@ -2153,10 +2146,9 @@ private fun animationExit(
         CaptionAnimation.SLIDE_LEFT ->
             slideOutHorizontally(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 targetOffsetX = {
                     -it
                 }
@@ -2165,10 +2157,9 @@ private fun animationExit(
         CaptionAnimation.SLIDE_RIGHT ->
             slideOutHorizontally(
                 animationSpec =
-                    androidx.compose.animation.core
-                        .tween<Int>(
-                            duration
-                        ),
+                    tween<IntOffset>(
+                        duration
+                    ),
                 targetOffsetX = {
                     it
                 }
