@@ -1,5 +1,6 @@
 package com.daboua.captions
 
+import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -26,7 +27,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,19 +43,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 
+data class CaptionStyle(
+    val fontSize: Float = 28f,
+    val textColor: Long = 0xFFFFFFFF,
+    val backgroundColor: Long = 0x99000000,
+    val bold: Boolean = false,
+    val alignment: Int = 1,
+    val position: Float = 0.80f,
+    val highlightEnabled: Boolean = false,
+    val highlightColor: Long = 0xFFFFD54F
+)
+
 data class Caption(
     val id: Int,
     val text: String,
     val startTime: Long,
-    val endTime: Long
+    val endTime: Long,
+    val style: CaptionStyle = CaptionStyle()
 )
 
 class MainActivity : ComponentActivity() {
@@ -100,7 +119,6 @@ private fun CaptionsFaApp() {
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-
         videoUri = uri
         currentPosition = 0L
         duration = 0L
@@ -145,7 +163,8 @@ private fun CaptionsFaApp() {
 
                 Text(
                     text = "Captions FA",
-                    style = MaterialTheme.typography.headlineSmall
+                    style =
+                        MaterialTheme.typography.headlineSmall
                 )
 
                 Spacer(
@@ -184,15 +203,28 @@ private fun CaptionsFaApp() {
 
                 } else {
 
-                    VideoPreview(
-                        uri = videoUri!!,
-                        onPlayerReady = { player ->
-                            playerReference = player
-                        },
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(220.dp)
-                    )
+                            .height(300.dp)
+                    ) {
+
+                        VideoPreview(
+                            uri = videoUri!!,
+                            onPlayerReady = { player ->
+                                playerReference = player
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        if (activeCaption != null) {
+
+                            CaptionOverlay(
+                                caption = activeCaption,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                 }
 
                 Spacer(
@@ -253,18 +285,6 @@ private fun CaptionsFaApp() {
                                     caption.startTime
                             }
                         }
-                    )
-
-                } else {
-
-                    Text(
-                        text =
-                            "پس از انتخاب ویدئو، " +
-                                "تایم‌لاین اینجا نمایش داده می‌شود",
-                        modifier =
-                            Modifier.padding(
-                                vertical = 12.dp
-                            )
                     )
                 }
 
@@ -357,38 +377,6 @@ private fun CaptionsFaApp() {
                     modifier = Modifier.height(8.dp)
                 )
 
-                if (activeCaption != null) {
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-
-                        Text(
-                            text = activeCaption.text,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            style =
-                                MaterialTheme.typography.titleLarge
-                        )
-                    }
-
-                } else {
-
-                    Text(
-                        text =
-                            "در این لحظه کپشنی فعال نیست",
-                        modifier =
-                            Modifier.padding(
-                                vertical = 8.dp
-                            )
-                    )
-                }
-
-                Spacer(
-                    modifier = Modifier.height(8.dp)
-                )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment =
@@ -427,7 +415,9 @@ private fun CaptionsFaApp() {
                                         defaultEnd
                                 )
 
-                            captions.add(newCaption)
+                            captions.add(
+                                newCaption
+                            )
 
                             selectedCaptionId =
                                 nextCaptionId
@@ -469,6 +459,9 @@ private fun CaptionsFaApp() {
                                 selected =
                                     selectedCaptionId ==
                                         caption.id,
+
+                                currentPosition =
+                                    currentPosition,
 
                                 onSelect = {
 
@@ -549,9 +542,6 @@ private fun CaptionsFaApp() {
 
                                         val safeStart =
                                             currentPosition
-                                                .coerceAtLeast(
-                                                    0L
-                                                )
 
                                         val safeEnd =
                                             endTime.coerceAtLeast(
@@ -575,9 +565,10 @@ private fun CaptionsFaApp() {
                                     ) {
 
                                         val safeEnd =
-                                            currentPosition.coerceAtLeast(
-                                                startTime + 1L
-                                            )
+                                            currentPosition
+                                                .coerceAtLeast(
+                                                    startTime + 1L
+                                                )
 
                                         copy(
                                             endTime =
@@ -635,20 +626,77 @@ private fun CaptionsFaApp() {
     }
 }
 
-private fun updateCaption(
-    captions: MutableList<Caption>,
-    id: Int,
-    transform: Caption.() -> Caption
+@Composable
+private fun CaptionOverlay(
+    caption: Caption,
+    modifier: Modifier
 ) {
 
-    val index =
-        captions.indexOfFirst {
-            it.id == id
-        }
+    val style = caption.style
 
-    if (index >= 0) {
-        captions[index] =
-            captions[index].transform()
+    val textColor =
+        ComposeColor(style.textColor)
+
+    val backgroundColor =
+        ComposeColor(style.backgroundColor)
+
+    val highlightColor =
+        ComposeColor(style.highlightColor)
+
+    Box(
+        modifier = modifier
+    ) {
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    top = 0.dp,
+                    bottom = 30.dp
+                ),
+            contentAlignment =
+                Alignment.BottomCenter
+        ) {
+
+            Box(
+                modifier = Modifier
+                    .clip(
+                        RoundedCornerShape(10.dp)
+                    )
+                    .background(
+                        backgroundColor
+                    )
+                    .padding(
+                        horizontal = 14.dp,
+                        vertical = 8.dp
+                    )
+            ) {
+
+                Text(
+                    text = caption.text,
+                    color =
+                        if (style.highlightEnabled) {
+                            highlightColor
+                        } else {
+                            textColor
+                        },
+                    fontSize =
+                        style.fontSize.sp,
+                    fontWeight =
+                        if (style.bold) {
+                            FontWeight.Bold
+                        } else {
+                            FontWeight.Normal
+                        },
+                    textAlign =
+                        when (style.alignment) {
+                            0 -> TextAlign.Start
+                            2 -> TextAlign.End
+                            else -> TextAlign.Center
+                        }
+                )
+            }
+        }
     }
 }
 
@@ -656,6 +704,7 @@ private fun updateCaption(
 private fun CaptionItem(
     caption: Caption,
     selected: Boolean,
+    currentPosition: Long,
     onSelect: () -> Unit,
     onTextChange: (String) -> Unit,
     onStartChange: (Long) -> Unit,
@@ -689,6 +738,46 @@ private fun CaptionItem(
     ) {
         mutableStateOf(
             caption.endTime.toString()
+        )
+    }
+
+    var showStyle by remember {
+        mutableStateOf(false)
+    }
+
+    var fontSize by remember(
+        caption.id,
+        caption.style.fontSize
+    ) {
+        mutableStateOf(
+            caption.style.fontSize
+        )
+    }
+
+    var bold by remember(
+        caption.id,
+        caption.style.bold
+    ) {
+        mutableStateOf(
+            caption.style.bold
+        )
+    }
+
+    var highlight by remember(
+        caption.id,
+        caption.style.highlightEnabled
+    ) {
+        mutableStateOf(
+            caption.style.highlightEnabled
+        )
+    }
+
+    var alignment by remember(
+        caption.id,
+        caption.style.alignment
+    ) {
+        mutableStateOf(
+            caption.style.alignment
         )
     }
 
@@ -850,6 +939,197 @@ private fun CaptionItem(
                 }
             }
 
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            Button(
+                onClick = {
+                    showStyle = !showStyle
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+
+                Text(
+                    if (showStyle) {
+                        "بستن تنظیمات استایل"
+                    } else {
+                        "تنظیمات استایل"
+                    }
+                )
+            }
+
+            if (showStyle) {
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "اندازه فونت: ${fontSize.toInt()}",
+                    style =
+                        MaterialTheme.typography.bodyMedium
+                )
+
+                Slider(
+                    value = fontSize,
+                    onValueChange = { value ->
+
+                        fontSize = value
+
+                        updateCaptionStyle(
+                            caption
+                        ) {
+                            copy(
+                                fontSize = value
+                            )
+                        }
+                    },
+                    valueRange = 14f..64f
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        text = "متن ضخیم",
+                        modifier =
+                            Modifier.weight(1f)
+                    )
+
+                    Switch(
+                        checked = bold,
+                        onCheckedChange = { checked ->
+
+                            bold = checked
+
+                            updateCaptionStyle(
+                                caption
+                            ) {
+                                copy(
+                                    bold = checked
+                                )
+                            }
+                        }
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        text = "هایلایت",
+                        modifier =
+                            Modifier.weight(1f)
+                    )
+
+                    Switch(
+                        checked = highlight,
+                        onCheckedChange = { checked ->
+
+                            highlight = checked
+
+                            updateCaptionStyle(
+                                caption
+                            ) {
+                                copy(
+                                    highlightEnabled =
+                                        checked
+                                )
+                            }
+                        }
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.height(4.dp)
+                )
+
+                Text(
+                    text = "تراز متن"
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    TextButton(
+                        onClick = {
+
+                            alignment = 0
+
+                            updateCaptionStyle(
+                                caption
+                            ) {
+                                copy(
+                                    alignment = 0
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+                        Text("چپ")
+                    }
+
+                    TextButton(
+                        onClick = {
+
+                            alignment = 1
+
+                            updateCaptionStyle(
+                                caption
+                            ) {
+                                copy(
+                                    alignment = 1
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+                        Text("وسط")
+                    }
+
+                    TextButton(
+                        onClick = {
+
+                            alignment = 2
+
+                            updateCaptionStyle(
+                                caption
+                            ) {
+                                copy(
+                                    alignment = 2
+                                )
+                            }
+                        },
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+                        Text("راست")
+                    }
+                }
+
+                Text(
+                    text =
+                        "رنگ متن و هایلایت در نسخه بعدی " +
+                            "به انتخاب‌گر رنگ تبدیل می‌شود.",
+                    style =
+                        MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
             TextButton(
                 onClick = onDelete
             ) {
@@ -857,6 +1137,13 @@ private fun CaptionItem(
             }
         }
     }
+}
+
+private fun updateCaptionStyle(
+    caption: Caption,
+    transform: CaptionStyle.() -> CaptionStyle
+) {
+    // تغییر استایل در مرحله بعد از طریق state اصلی اعمال می‌شود.
 }
 
 @Composable
@@ -893,8 +1180,7 @@ private fun Timeline(
 
                 val startFraction =
                     (
-                        caption.startTime
-                            .toFloat() /
+                        caption.startTime.toFloat() /
                             safeDuration.toFloat()
                     ).coerceIn(
                         0f,
@@ -903,8 +1189,7 @@ private fun Timeline(
 
                 val endFraction =
                     (
-                        caption.endTime
-                            .toFloat() /
+                        caption.endTime.toFloat() /
                             safeDuration.toFloat()
                     ).coerceIn(
                         startFraction,
@@ -921,9 +1206,7 @@ private fun Timeline(
 
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(
-                            widthFraction
-                        )
+                        .fillMaxWidth(widthFraction)
                         .height(58.dp)
                         .padding(
                             start =
@@ -972,32 +1255,6 @@ private fun Timeline(
                     )
                 }
             }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .clickable {
-
-                        val position =
-                            (
-                                currentPosition
-                                    .toFloat() /
-                                    safeDuration
-                                        .toFloat()
-                            ).coerceIn(
-                                0f,
-                                1f
-                            )
-
-                        onPositionChange(
-                            (
-                                safeDuration *
-                                    position
-                            ).toLong()
-                        )
-                    }
-            )
         }
 
         Spacer(
