@@ -71,13 +71,18 @@ import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
+        super.onCreate(
+            savedInstanceState
+        )
 
         setContent {
             CaptionsFaApp()
@@ -103,7 +108,8 @@ data class CaptionStyle(
     val position: Float = 0.82f,
     val highlightEnabled: Boolean = false,
     val highlightColor: Long = 0xFFFFD54F,
-    val animation: CaptionAnimation = CaptionAnimation.NONE,
+    val animation: CaptionAnimation =
+        CaptionAnimation.NONE,
     val animationDuration: Int = 350
 )
 
@@ -112,7 +118,8 @@ data class Caption(
     val text: String,
     val startTime: Long,
     val endTime: Long,
-    val style: CaptionStyle = CaptionStyle()
+    val style: CaptionStyle =
+        CaptionStyle()
 )
 
 private data class LoadedProject(
@@ -125,7 +132,8 @@ private data class LoadedProject(
 fun CaptionsFaApp() {
 
     val context =
-        androidx.compose.ui.platform.LocalContext.current
+        androidx.compose.ui.platform.LocalContext
+            .current
 
     val captions =
         remember {
@@ -168,6 +176,31 @@ fun CaptionsFaApp() {
         mutableStateOf<ExoPlayer?>(null)
     }
 
+    /*
+     * هر بار ویدیو عوض شود این عدد تغییر می‌کند.
+     *
+     * بنابراین اگر پردازش ویدیوی قبلی هنوز در پس‌زمینه
+     * باشد، نتیجه‌اش وارد ویدیوی جدید نمی‌شود.
+     */
+    val transcriptionGeneration =
+        remember {
+            AtomicInteger(0)
+        }
+
+    val mainHandler =
+        remember {
+            Handler(
+                Looper.getMainLooper()
+            )
+        }
+
+    /*
+     * انتخاب ویدیو
+     *
+     * نکته مهم:
+     * دیگر لازم نیست بعد از انتخاب ویدیو دکمه‌ای بزنی.
+     * کپشن‌گذاری خودش شروع می‌شود.
+     */
     val videoPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument()
@@ -176,29 +209,285 @@ fun CaptionsFaApp() {
             if (uri != null) {
 
                 try {
+
                     context.contentResolver
                         .takePersistableUriPermission(
                             uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
+
                 } catch (_: Exception) {
                 }
 
-                videoUri = uri
-                currentPosition = 0L
-                videoDuration = 0L
-                isPlaying = false
-                playerReference = null
+                /*
+                 * نسل جدید پردازش.
+                 */
+                val generation =
+                    transcriptionGeneration
+                        .incrementAndGet()
+
+                videoUri =
+                    uri
+
+                currentPosition =
+                    0L
+
+                videoDuration =
+                    0L
+
+                isPlaying =
+                    false
+
+                playerReference =
+                    null
 
                 captions.clear()
-                selectedCaptionId = null
-                nextCaptionId = 1
+
+                selectedCaptionId =
+                    null
+
+                nextCaptionId =
+                    1
+
+                isTranscribing =
+                    true
 
                 message =
-                    "ویدیو انتخاب شد؛ حالا «ساخت خودکار کپشن فارسی» را بزن"
+                    "ویدیو آماده شد؛ کپشن‌گذاری همزمان شروع شد..."
+
+                /*
+                 * پردازش در Thread جدا.
+                 *
+                 * بنابراین UI و ویدیو قفل نمی‌شوند.
+                 */
+                thread {
+
+                    try {
+
+                        LocalWhisper
+                            .transcribeVideoStreaming(
+
+                                context =
+                                    context,
+
+                                uri =
+                                    uri,
+
+                                threads =
+                                    4,
+
+                                onSegment = {
+                                    segment ->
+
+                                    mainHandler.post {
+
+                                        /*
+                                         * اگر کاربر ویدیوی دیگری
+                                         * انتخاب کرده باشد، نتیجه
+                                         * این ویدیو دیگر معتبر نیست.
+                                         */
+                                        if (
+                                            transcriptionGeneration
+                                                .get() !=
+                                            generation
+                                        ) {
+                                            return@post
+                                        }
+
+                                        /*
+                                         * جلوگیری از کپشن تکراری.
+                                         */
+                                        val duplicate =
+                                            captions.any {
+
+                                                kotlin.math
+                                                    .abs(
+                                                        it.startTime -
+                                                            segment.startTime
+                                                    ) < 450L &&
+                                                    it.text
+                                                        .trim()
+                                                        .equals(
+                                                            segment.text
+                                                                .trim(),
+                                                            ignoreCase = true
+                                                        )
+                                            }
+
+                                        if (
+                                            duplicate
+                                        ) {
+                                            return@post
+                                        }
+
+                                        /*
+                                         * کپشن قبلی را اگر با کپشن
+                                         * جدید همپوشانی دارد کوتاه می‌کنیم.
+                                         */
+                                        val previous =
+                                            captions
+                                                .filter {
+                                                    it.startTime <=
+                                                        segment.startTime
+                                                }
+                                                .maxByOrNull {
+                                                    it.startTime
+                                                }
+
+                                        if (
+                                            previous != null &&
+                                            previous.endTime >
+                                                segment.startTime
+                                        ) {
+
+                                            updateCaption(
+                                                captions,
+                                                previous.id
+                                            ) {
+
+                                                it.copy(
+                                                    endTime =
+                                                        (
+                                                            segment.startTime -
+                                                                40L
+                                                        ).coerceAtLeast(
+                                                            it.startTime +
+                                                                150L
+                                                        )
+                                                )
+                                            }
+                                        }
+
+                                        val newId =
+                                            nextCaptionId
+
+                                        nextCaptionId++
+
+                                        captions.add(
+                                            Caption(
+                                                id =
+                                                    newId,
+                                                text =
+                                                    segment.text,
+                                                startTime =
+                                                    segment.startTime,
+                                                endTime =
+                                                    segment.endTime
+                                            )
+                                        )
+
+                                        /*
+                                         * مرتب‌سازی زمانی.
+                                         */
+                                        val sorted =
+                                            captions
+                                                .sortedBy {
+                                                    it.startTime
+                                                }
+
+                                        captions.clear()
+
+                                        captions.addAll(
+                                            sorted
+                                        )
+
+                                        selectedCaptionId =
+                                            newId
+
+                                        message =
+                                            "کپشن جدید ساخته شد: " +
+                                                segment.text
+                                    }
+                                },
+
+                                onProgress = {
+                                    done,
+                                    total ->
+
+                                    mainHandler.post {
+
+                                        if (
+                                            transcriptionGeneration
+                                                .get() !=
+                                            generation
+                                        ) {
+                                            return@post
+                                        }
+
+                                        val percent =
+                                            (
+                                                done.toFloat() /
+                                                    total
+                                                        .coerceAtLeast(
+                                                            1L
+                                                        )
+                                                        .toFloat()
+                                            )
+                                                .coerceIn(
+                                                    0f,
+                                                    1f
+                                                ) * 100f
+
+                                        message =
+                                            "کپشن‌گذاری زنده: " +
+                                                "${percent.toInt()}٪"
+                                    }
+                                }
+                            )
+
+                        mainHandler.post {
+
+                            if (
+                                transcriptionGeneration
+                                    .get() !=
+                                generation
+                            ) {
+                                return@post
+                            }
+
+                            isTranscribing =
+                                false
+
+                            message =
+                                if (
+                                    captions.isEmpty()
+                                ) {
+
+                                    "گفتاری برای تشخیص پیدا نشد"
+
+                                } else {
+
+                                    "${captions.size} کپشن ساخته شد"
+                                }
+                        }
+
+                    } catch (e: Exception) {
+
+                        mainHandler.post {
+
+                            if (
+                                transcriptionGeneration
+                                    .get() !=
+                                generation
+                            ) {
+                                return@post
+                            }
+
+                            isTranscribing =
+                                false
+
+                            message =
+                                e.message
+                                    ?: "خطا در کپشن‌گذاری"
+                        }
+                    }
+                }
             }
         }
 
+    /*
+     * ورود SRT
+     */
     val srtImportPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument()
@@ -216,28 +505,38 @@ fun CaptionsFaApp() {
                                 it.readText()
                             }
 
-                    if (content != null) {
+                    if (
+                        content != null
+                    ) {
 
                         val parsed =
-                            parseSrt(content)
+                            parseSrt(
+                                content
+                            )
 
                         captions.clear()
 
-                        var id = 1
+                        var id =
+                            1
 
                         parsed.forEach { item ->
 
                             captions.add(
                                 Caption(
-                                    id = id++,
-                                    text = item.text,
-                                    startTime = item.startTime,
-                                    endTime = item.endTime
+                                    id =
+                                        id++,
+                                    text =
+                                        item.text,
+                                    startTime =
+                                        item.startTime,
+                                    endTime =
+                                        item.endTime
                                 )
                             )
                         }
 
-                        nextCaptionId = id
+                        nextCaptionId =
+                            id
 
                         selectedCaptionId =
                             captions
@@ -256,6 +555,9 @@ fun CaptionsFaApp() {
             }
         }
 
+    /*
+     * خروجی SRT
+     */
     val srtExportPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument(
@@ -271,8 +573,11 @@ fun CaptionsFaApp() {
                         .openOutputStream(uri)
                         ?.bufferedWriter()
                         ?.use {
+
                             it.write(
-                                buildSrt(captions)
+                                buildSrt(
+                                    captions
+                                )
                             )
                         }
 
@@ -287,6 +592,9 @@ fun CaptionsFaApp() {
             }
         }
 
+    /*
+     * ذخیره پروژه
+     */
     val projectSavePicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument(
@@ -302,6 +610,7 @@ fun CaptionsFaApp() {
                         .openOutputStream(uri)
                         ?.bufferedWriter()
                         ?.use {
+
                             it.write(
                                 buildProjectJson(
                                     captions,
@@ -322,6 +631,9 @@ fun CaptionsFaApp() {
             }
         }
 
+    /*
+     * باز کردن پروژه
+     */
     val projectOpenPicker =
         rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument()
@@ -339,10 +651,14 @@ fun CaptionsFaApp() {
                                 it.readText()
                             }
 
-                    if (content != null) {
+                    if (
+                        content != null
+                    ) {
 
                         val project =
-                            parseProjectJson(content)
+                            parseProjectJson(
+                                content
+                            )
 
                         captions.clear()
 
@@ -355,13 +671,16 @@ fun CaptionsFaApp() {
 
                         nextCaptionId =
                             (
-                                captions.maxOfOrNull {
-                                    it.id
-                                } ?: 0
+                                captions
+                                    .maxOfOrNull {
+                                        it.id
+                                    }
+                                    ?: 0
                             ) + 1
 
                         selectedCaptionId =
-                            project.selectedCaptionId
+                            project
+                                .selectedCaptionId
                                 ?.takeIf { id ->
                                     captions.any {
                                         it.id == id
@@ -374,10 +693,29 @@ fun CaptionsFaApp() {
                         videoUri =
                             project.videoUri
 
-                        currentPosition = 0L
-                        videoDuration = 0L
-                        isPlaying = false
-                        playerReference = null
+                        currentPosition =
+                            0L
+
+                        videoDuration =
+                            0L
+
+                        isPlaying =
+                            false
+
+                        playerReference =
+                            null
+
+                        /*
+                         * پروژه باز شده است.
+                         * برای جلوگیری از پردازش ناخواسته،
+                         * خودکار Whisper را روی پروژه ذخیره‌شده
+                         * اجرا نمی‌کنیم.
+                         */
+                        transcriptionGeneration
+                            .incrementAndGet()
+
+                        isTranscribing =
+                            false
 
                         message =
                             "پروژه با ${captions.size} کپشن باز شد"
@@ -391,7 +729,12 @@ fun CaptionsFaApp() {
             }
         }
 
-    LaunchedEffect(playerReference) {
+    /*
+     * وضعیت Player
+     */
+    LaunchedEffect(
+        playerReference
+    ) {
 
         val player =
             playerReference
@@ -401,11 +744,15 @@ fun CaptionsFaApp() {
 
             currentPosition =
                 player.currentPosition
-                    .coerceAtLeast(0L)
+                    .coerceAtLeast(
+                        0L
+                    )
 
             videoDuration =
                 player.duration
-                    .coerceAtLeast(0L)
+                    .coerceAtLeast(
+                        0L
+                    )
 
             isPlaying =
                 player.isPlaying
@@ -414,15 +761,25 @@ fun CaptionsFaApp() {
         }
     }
 
+    /*
+     * کپشن فعال بر اساس زمان ویدیو.
+     */
     val activeCaption =
         captions.firstOrNull {
-            currentPosition >= it.startTime &&
-                currentPosition <= it.endTime
+
+            currentPosition >=
+                it.startTime &&
+                currentPosition <=
+                it.endTime
         }
 
-    LaunchedEffect(activeCaption?.id) {
+    LaunchedEffect(
+        activeCaption?.id
+    ) {
 
-        if (activeCaption != null) {
+        if (
+            activeCaption != null
+        ) {
 
             selectedCaptionId =
                 activeCaption.id
@@ -446,9 +803,12 @@ fun CaptionsFaApp() {
             ) {
 
                 Text(
-                    text = "Captions FA",
-                    color = Color.White,
-                    fontSize = 24.sp,
+                    text =
+                        "Captions FA",
+                    color =
+                        Color.White,
+                    fontSize =
+                        24.sp,
                     fontWeight =
                         FontWeight.Bold
                 )
@@ -463,7 +823,8 @@ fun CaptionsFaApp() {
                         "تبدیل خودکار گفتار ویدئو به کپشن فارسی",
                     color =
                         Color.LightGray,
-                    fontSize = 13.sp
+                    fontSize =
+                        13.sp
                 )
 
                 Spacer(
@@ -475,20 +836,29 @@ fun CaptionsFaApp() {
                     modifier =
                         Modifier.fillMaxWidth(),
                     horizontalArrangement =
-                        Arrangement.spacedBy(8.dp)
+                        Arrangement.spacedBy(
+                            8.dp
+                        )
                 ) {
 
                     Button(
                         onClick = {
 
                             videoPicker.launch(
-                                arrayOf("video/*")
+                                arrayOf(
+                                    "video/*"
+                                )
                             )
                         },
                         modifier =
-                            Modifier.weight(1f)
+                            Modifier.weight(
+                                1f
+                            )
                     ) {
-                        Text("انتخاب ویدیو")
+
+                        Text(
+                            "انتخاب ویدیو"
+                        )
                     }
 
                     OutlinedButton(
@@ -503,9 +873,14 @@ fun CaptionsFaApp() {
                             )
                         },
                         modifier =
-                            Modifier.weight(1f)
+                            Modifier.weight(
+                                1f
+                            )
                     ) {
-                        Text("ورود SRT")
+
+                        Text(
+                            "ورود SRT"
+                        )
                     }
                 }
 
@@ -514,100 +889,195 @@ fun CaptionsFaApp() {
                         Modifier.height(8.dp)
                 )
 
+                /*
+                 * این دکمه برای اجرای دوباره
+                 * پردازش روی همان ویدیو نگه داشته شده.
+                 */
                 Button(
                     onClick = {
 
-                        if (videoUri == null) {
+                        val uri =
+                            videoUri
+                                ?: return@Button
+
+                        if (
+                            isTranscribing
+                        ) {
 
                             message =
-                                "اول یک ویدیو انتخاب کن"
+                                "کپشن‌گذاری در حال انجام است..."
 
-                        } else if (isTranscribing) {
+                            return@Button
+                        }
 
-                            message =
-                                "در حال ساخت کپشن است..."
+                        val generation =
+                            transcriptionGeneration
+                                .incrementAndGet()
 
-                        } else {
+                        captions.clear()
 
-                            isTranscribing =
-                                true
+                        nextCaptionId =
+                            1
 
-                            message =
-                                "در حال آماده‌سازی Whisper و پردازش ویدیو..."
+                        selectedCaptionId =
+                            null
 
-                            val uri =
-                                videoUri!!
+                        isTranscribing =
+                            true
 
-                            thread {
+                        message =
+                            "بازسازی کپشن‌ها شروع شد..."
 
-                                try {
+                        thread {
 
-                                    val result =
-                                        LocalWhisper.transcribeVideo(
-                                            context =
-                                                context,
-                                            uri =
-                                                uri,
-                                            threads = 4
-                                        )
+                            try {
 
-                                    Handler(
-                                        Looper.getMainLooper()
-                                    ).post {
+                                LocalWhisper
+                                    .transcribeVideoStreaming(
 
-                                        captions.clear()
+                                        context =
+                                            context,
 
-                                        var id = 1
+                                        uri =
+                                            uri,
 
-                                        result.forEach { item ->
+                                        threads =
+                                            4,
 
-                                            captions.add(
-                                                Caption(
-                                                    id = id++,
-                                                    text =
-                                                        item.text,
-                                                    startTime =
-                                                        item.startTime,
-                                                    endTime =
-                                                        item.endTime
+                                        onSegment = {
+                                            segment ->
+
+                                            mainHandler.post {
+
+                                                if (
+                                                    transcriptionGeneration
+                                                        .get() !=
+                                                    generation
+                                                ) {
+                                                    return@post
+                                                }
+
+                                                val duplicate =
+                                                    captions.any {
+
+                                                        kotlin.math
+                                                            .abs(
+                                                                it.startTime -
+                                                                    segment.startTime
+                                                            ) < 450L &&
+                                                            it.text
+                                                                .trim() ==
+                                                            segment.text
+                                                                .trim()
+                                                    }
+
+                                                if (
+                                                    duplicate
+                                                ) {
+                                                    return@post
+                                                }
+
+                                                val id =
+                                                    nextCaptionId
+
+                                                nextCaptionId++
+
+                                                captions.add(
+                                                    Caption(
+                                                        id =
+                                                            id,
+                                                        text =
+                                                            segment.text,
+                                                        startTime =
+                                                            segment.startTime,
+                                                        endTime =
+                                                            segment.endTime
+                                                    )
                                                 )
-                                            )
-                                        }
 
-                                        nextCaptionId =
-                                            id
+                                                captions.sortBy {
+                                                    it.startTime
+                                                }
 
-                                        selectedCaptionId =
-                                            captions
-                                                .firstOrNull()
-                                                ?.id
-
-                                        isTranscribing =
-                                            false
-
-                                        message =
-                                            if (
-                                                result.isEmpty()
-                                            ) {
-                                                "گفتاری قابل تشخیص پیدا نشد"
-                                            } else {
-                                                "${result.size} کپشن فارسی خودکار ساخته شد"
+                                                message =
+                                                    "کپشن جدید: " +
+                                                        segment.text
                                             }
+                                        },
+
+                                        onProgress = {
+                                            done,
+                                            total ->
+
+                                            mainHandler.post {
+
+                                                if (
+                                                    transcriptionGeneration
+                                                        .get() !=
+                                                    generation
+                                                ) {
+                                                    return@post
+                                                }
+
+                                                val percent =
+                                                    (
+                                                        done.toFloat() /
+                                                            total
+                                                                .coerceAtLeast(
+                                                                    1L
+                                                                )
+                                                                .toFloat()
+                                                    )
+                                                        .coerceIn(
+                                                            0f,
+                                                            1f
+                                                        ) *
+                                                        100f
+
+                                                message =
+                                                    "در حال ساخت کپشن: " +
+                                                        "${percent.toInt()}٪"
+                                            }
+                                        }
+                                    )
+
+                                mainHandler.post {
+
+                                    if (
+                                        transcriptionGeneration
+                                            .get() !=
+                                        generation
+                                    ) {
+                                        return@post
                                     }
 
-                                } catch (e: Exception) {
+                                    isTranscribing =
+                                        false
 
-                                    Handler(
-                                        Looper.getMainLooper()
-                                    ).post {
+                                    message =
+                                        "${captions.size} کپشن ساخته شد"
+                                }
 
-                                        isTranscribing =
-                                            false
+                            } catch (
+                                e: Exception
+                            ) {
 
-                                        message =
-                                            e.message
-                                                ?: "خطا در ساخت کپشن"
+                                mainHandler.post {
+
+                                    if (
+                                        transcriptionGeneration
+                                            .get() !=
+                                        generation
+                                    ) {
+                                        return@post
                                     }
+
+                                    isTranscribing =
+                                        false
+
+                                    message =
+                                        e.message
+                                            ?: "خطا در ساخت کپشن"
                                 }
                             }
                         }
@@ -615,31 +1085,38 @@ fun CaptionsFaApp() {
                     modifier =
                         Modifier.fillMaxWidth(),
                     enabled =
-                        !isTranscribing
+                        !isTranscribing &&
+                            videoUri != null
                 ) {
 
                     Text(
-                        if (isTranscribing)
-                            "⏳ در حال ساخت کپشن فارسی..."
+                        if (
+                            isTranscribing
+                        )
+                            "⏳ کپشن‌گذاری همزمان..."
                         else
-                            "✨ ساخت خودکار کپشن فارسی"
+                            "🔄 بازسازی کپشن‌ها"
                     )
                 }
 
-                if (isTranscribing) {
+                if (
+                    isTranscribing
+                ) {
 
                     Spacer(
                         modifier =
-                            Modifier.height(4.dp)
+                            Modifier.height(
+                                4.dp
+                            )
                     )
 
                     Text(
                         text =
-                            "در اولین اجرا ممکن است مدل Whisper دانلود شود؛ " +
-                                "بعد از آن مدل روی خود گوشی استفاده می‌شود.",
+                            "ویدیو متوقف نمی‌شود؛ کپشن‌ها همزمان و مرحله‌به‌مرحله ساخته می‌شوند.",
                         color =
                             Color(0xFFFFD54F),
-                        fontSize = 11.sp,
+                        fontSize =
+                            11.sp,
                         modifier =
                             Modifier.fillMaxWidth(),
                         textAlign =
@@ -660,7 +1137,9 @@ fun CaptionsFaApp() {
                                 rememberScrollState()
                             ),
                     horizontalArrangement =
-                        Arrangement.spacedBy(8.dp)
+                        Arrangement.spacedBy(
+                            8.dp
+                        )
                 ) {
 
                     OutlinedButton(
@@ -671,7 +1150,10 @@ fun CaptionsFaApp() {
                             )
                         }
                     ) {
-                        Text("خروجی SRT")
+
+                        Text(
+                            "خروجی SRT"
+                        )
                     }
 
                     OutlinedButton(
@@ -682,7 +1164,10 @@ fun CaptionsFaApp() {
                             )
                         }
                     ) {
-                        Text("ذخیره پروژه")
+
+                        Text(
+                            "ذخیره پروژه"
+                        )
                     }
 
                     OutlinedButton(
@@ -697,7 +1182,10 @@ fun CaptionsFaApp() {
                             )
                         }
                     ) {
-                        Text("باز کردن پروژه")
+
+                        Text(
+                            "باز کردن پروژه"
+                        )
                     }
                 }
 
@@ -709,13 +1197,15 @@ fun CaptionsFaApp() {
                 videoUri?.let { uri ->
 
                     VideoPreview(
-                        uri = uri,
+                        uri =
+                            uri,
                         currentPosition =
                             currentPosition,
                         activeCaption =
                             activeCaption,
                         onPlayerReady = {
-                            playerReference = it
+                            playerReference =
+                                it
                         }
                     )
 
@@ -725,7 +1215,8 @@ fun CaptionsFaApp() {
                     )
 
                     Timeline(
-                        captions = captions,
+                        captions =
+                            captions,
                         currentPosition =
                             currentPosition,
                         duration =
@@ -756,13 +1247,16 @@ fun CaptionsFaApp() {
                                         (
                                             currentPosition -
                                                 5000L
-                                            ).coerceAtLeast(
-                                                0L
-                                            )
+                                        ).coerceAtLeast(
+                                            0L
+                                        )
                                     )
                             }
                         ) {
-                            Text("-5s")
+
+                            Text(
+                                "-5s"
+                            )
                         }
 
                         Spacer(
@@ -777,16 +1271,23 @@ fun CaptionsFaApp() {
                                     playerReference
                                         ?: return@Button
 
-                                if (player.isPlaying) {
+                                if (
+                                    player.isPlaying
+                                ) {
+
                                     player.pause()
+
                                 } else {
+
                                     player.play()
                                 }
                             }
                         ) {
 
                             Text(
-                                if (isPlaying)
+                                if (
+                                    isPlaying
+                                )
                                     "⏸ توقف"
                                 else
                                     "▶ پخش"
@@ -806,13 +1307,16 @@ fun CaptionsFaApp() {
                                         (
                                             currentPosition +
                                                 5000L
-                                            ).coerceAtMost(
-                                                videoDuration
-                                            )
+                                        ).coerceAtMost(
+                                            videoDuration
+                                        )
                                     )
                             }
                         ) {
-                            Text("+5s")
+
+                            Text(
+                                "+5s"
+                            )
                         }
                     }
 
@@ -824,7 +1328,9 @@ fun CaptionsFaApp() {
                     Text(
                         text =
                             "${formatTime(currentPosition)} / " +
-                                formatTime(videoDuration),
+                                formatTime(
+                                    videoDuration
+                                ),
                         color =
                             Color.LightGray,
                         modifier =
@@ -839,17 +1345,21 @@ fun CaptionsFaApp() {
                     )
                 }
 
-                if (message.isNotBlank()) {
+                if (
+                    message.isNotBlank()
+                ) {
 
                     Text(
-                        text = message,
+                        text =
+                            message,
                         color =
                             Color(0xFFFFD54F),
                         modifier =
                             Modifier
                                 .fillMaxWidth()
                                 .padding(
-                                    vertical = 4.dp
+                                    vertical =
+                                        4.dp
                                 ),
                         textAlign =
                             TextAlign.Center
@@ -857,12 +1367,16 @@ fun CaptionsFaApp() {
                 }
 
                 CaptionEditor(
-                    captions = captions,
+                    captions =
+                        captions,
                     selectedCaptionId =
                         selectedCaptionId,
+
                     onSelect = {
-                        selectedCaptionId = it
+                        selectedCaptionId =
+                            it
                     },
+
                     onAdd = {
 
                         val start =
@@ -875,21 +1389,24 @@ fun CaptionsFaApp() {
                             ) {
 
                                 (
-                                    start + 2000L
-                                    ).coerceAtMost(
-                                        videoDuration
-                                    )
+                                    start +
+                                        2000L
+                                ).coerceAtMost(
+                                    videoDuration
+                                )
 
                             } else {
 
-                                start + 2000L
+                                start +
+                                    2000L
                             }
 
                         captions.add(
                             Caption(
                                 id =
                                     nextCaptionId,
-                                text = "",
+                                text =
+                                    "",
                                 startTime =
                                     start,
                                 endTime =
@@ -902,6 +1419,7 @@ fun CaptionsFaApp() {
 
                         nextCaptionId++
                     },
+
                     onDelete = { id ->
 
                         captions.removeAll {
@@ -913,7 +1431,10 @@ fun CaptionsFaApp() {
                                 .firstOrNull()
                                 ?.id
                     },
-                    onUpdate = { id, transform ->
+
+                    onUpdate = {
+                        id,
+                        transform ->
 
                         updateCaption(
                             captions,
@@ -921,6 +1442,7 @@ fun CaptionsFaApp() {
                             transform
                         )
                     },
+
                     onSetStart = { id ->
 
                         val caption =
@@ -949,6 +1471,7 @@ fun CaptionsFaApp() {
                                 "شروع ثبت شد"
                         }
                     },
+
                     onSetEnd = { id ->
 
                         val caption =
@@ -977,6 +1500,7 @@ fun CaptionsFaApp() {
                                 "پایان ثبت شد"
                         }
                     },
+
                     onGoToStart = { id ->
 
                         captions.firstOrNull {
@@ -989,6 +1513,7 @@ fun CaptionsFaApp() {
                                 )
                         }
                     },
+
                     onGoToEnd = { id ->
 
                         captions.firstOrNull {
@@ -1012,21 +1537,27 @@ private fun VideoPreview(
     uri: Uri,
     currentPosition: Long,
     activeCaption: Caption?,
-    onPlayerReady: (ExoPlayer) -> Unit
+    onPlayerReady:
+        (ExoPlayer) -> Unit
 ) {
 
     val context =
-        androidx.compose.ui.platform.LocalContext.current
+        androidx.compose.ui.platform.LocalContext
+            .current
 
     val player =
         remember(uri) {
 
-            ExoPlayer.Builder(context)
+            ExoPlayer.Builder(
+                context
+            )
                 .build()
                 .apply {
 
                     setMediaItem(
-                        MediaItem.fromUri(uri)
+                        MediaItem.fromUri(
+                            uri
+                        )
                     )
 
                     prepare()
@@ -1034,14 +1565,26 @@ private fun VideoPreview(
                     seekTo(
                         currentPosition
                     )
+
+                    /*
+                     * مهم:
+                     * ویدیو بلافاصله شروع می‌شود.
+                     */
+                    playWhenReady =
+                        true
                 }
         }
 
-    DisposableEffect(player) {
+    DisposableEffect(
+        player
+    ) {
 
-        onPlayerReady(player)
+        onPlayerReady(
+            player
+        )
 
         onDispose {
+
             player.release()
         }
     }
@@ -1052,14 +1595,18 @@ private fun VideoPreview(
                 .fillMaxWidth()
                 .height(300.dp)
                 .clip(
-                    RoundedCornerShape(12.dp)
+                    RoundedCornerShape(
+                        12.dp
+                    )
                 )
     ) {
 
         AndroidView(
             factory = { ctx ->
 
-                PlayerView(ctx).apply {
+                PlayerView(
+                    ctx
+                ).apply {
 
                     this.player =
                         player
@@ -1072,25 +1619,30 @@ private fun VideoPreview(
                 Modifier.fillMaxSize()
         )
 
-        activeCaption?.let { caption ->
+        activeCaption?.let {
+            caption ->
 
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
                         .padding(
-                            horizontal = 8.dp
+                            horizontal =
+                                8.dp
                         ),
                 contentAlignment =
                     Alignment.TopCenter
             ) {
 
                 CaptionOverlay(
-                    caption = caption,
+                    caption =
+                        caption,
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
+                            .height(
+                                180.dp
+                            )
                 )
             }
         }
@@ -1102,11 +1654,14 @@ private fun Timeline(
     captions: List<Caption>,
     currentPosition: Long,
     duration: Long,
-    onPositionClick: (Long) -> Unit
+    onPositionClick:
+        (Long) -> Unit
 ) {
 
     val safeDuration =
-        duration.coerceAtLeast(1L)
+        duration.coerceAtLeast(
+            1L
+        )
 
     Column(
         modifier =
@@ -1114,9 +1669,12 @@ private fun Timeline(
     ) {
 
         Text(
-            text = "Timeline",
-            color = Color.White,
-            fontSize = 14.sp
+            text =
+                "Timeline",
+            color =
+                Color.White,
+            fontSize =
+                14.sp
         )
 
         Box(
@@ -1125,36 +1683,41 @@ private fun Timeline(
                     .fillMaxWidth()
                     .height(55.dp)
                     .clip(
-                        RoundedCornerShape(8.dp)
+                        RoundedCornerShape(
+                            8.dp
+                        )
                     )
                     .background(
                         Color(0xFF252525)
                     )
         ) {
 
-            captions.forEach { caption ->
+            captions.forEach {
+                caption ->
 
                 val startFraction =
                     (
                         caption.startTime
                             .toFloat() /
-                            safeDuration.toFloat()
-                        ).coerceIn(
-                            0f,
-                            1f
-                        )
+                            safeDuration
+                                .toFloat()
+                    ).coerceIn(
+                        0f,
+                        1f
+                    )
 
                 val widthFraction =
                     (
                         (
                             caption.endTime -
                                 caption.startTime
-                            ).toFloat() /
-                            safeDuration.toFloat()
-                        ).coerceIn(
-                            0.01f,
-                            1f
-                        )
+                        ).toFloat() /
+                            safeDuration
+                                .toFloat()
+                    ).coerceIn(
+                        0.01f,
+                        1f
+                    )
 
                 Box(
                     modifier =
@@ -1164,30 +1727,38 @@ private fun Timeline(
                                     (
                                         startFraction *
                                             1000f
-                                        ).dp
+                                    ).dp
                             )
                             .fillMaxHeight()
                             .fillMaxWidth(
                                 widthFraction
                             )
-                            .padding(3.dp)
+                            .padding(
+                                3.dp
+                            )
                             .clip(
-                                RoundedCornerShape(5.dp)
+                                RoundedCornerShape(
+                                    5.dp
+                                )
                             )
                             .background(
-                                Color(0xFF6D4C41)
+                                Color(
+                                    0xFF6D4C41
+                                )
                             )
                 )
             }
 
             val positionFraction =
                 (
-                    currentPosition.toFloat() /
-                        safeDuration.toFloat()
-                    ).coerceIn(
-                        0f,
-                        1f
-                    )
+                    currentPosition
+                        .toFloat() /
+                        safeDuration
+                            .toFloat()
+                ).coerceIn(
+                    0f,
+                    1f
+                )
 
             Box(
                 modifier =
@@ -1199,10 +1770,12 @@ private fun Timeline(
                                 (
                                     positionFraction *
                                         1000f
-                                    ).dp
+                                ).dp
                         )
                         .background(
-                            Color(0xFFFFD54F)
+                            Color(
+                                0xFFFFD54F
+                            )
                         )
             )
         }
@@ -1214,13 +1787,17 @@ private fun Timeline(
                         safeDuration
                     )
                     .toFloat(),
+
             onValueChange = {
                 onPositionClick(
                     it.toLong()
                 )
             },
+
             valueRange =
-                0f..safeDuration.toFloat(),
+                0f..safeDuration
+                    .toFloat(),
+
             modifier =
                 Modifier.fillMaxWidth()
         )
@@ -1235,7 +1812,10 @@ private fun CaptionEditor(
     onAdd: () -> Unit,
     onDelete: (Int) -> Unit,
     onUpdate:
-        (Int, (Caption) -> Caption) -> Unit,
+        (
+            Int,
+            (Caption) -> Caption
+        ) -> Unit,
     onSetStart: (Int) -> Unit,
     onSetEnd: (Int) -> Unit,
     onGoToStart: (Int) -> Unit,
@@ -1257,17 +1837,24 @@ private fun CaptionEditor(
         ) {
 
             Text(
-                text = "کپشن‌ها",
-                color = Color.White,
-                fontSize = 18.sp,
+                text =
+                    "کپشن‌ها",
+                color =
+                    Color.White,
+                fontSize =
+                    18.sp,
                 fontWeight =
                     FontWeight.Bold
             )
 
             Button(
-                onClick = onAdd
+                onClick =
+                    onAdd
             ) {
-                Text("＋ افزودن")
+
+                Text(
+                    "＋ افزودن"
+                )
             }
         }
 
@@ -1276,37 +1863,59 @@ private fun CaptionEditor(
                 Modifier.height(6.dp)
         )
 
-        captions.forEach { caption ->
+        captions.forEach {
+            caption ->
 
             CaptionCard(
-                caption = caption,
+                caption =
+                    caption,
                 selected =
                     caption.id ==
                         selectedCaptionId,
+
                 onSelect = {
-                    onSelect(caption.id)
+                    onSelect(
+                        caption.id
+                    )
                 },
+
                 onDelete = {
-                    onDelete(caption.id)
+                    onDelete(
+                        caption.id
+                    )
                 },
+
                 onUpdate = {
                     transform ->
+
                     onUpdate(
                         caption.id,
                         transform
                     )
                 },
+
                 onSetStart = {
-                    onSetStart(caption.id)
+                    onSetStart(
+                        caption.id
+                    )
                 },
+
                 onSetEnd = {
-                    onSetEnd(caption.id)
+                    onSetEnd(
+                        caption.id
+                    )
                 },
+
                 onGoToStart = {
-                    onGoToStart(caption.id)
+                    onGoToStart(
+                        caption.id
+                    )
                 },
+
                 onGoToEnd = {
-                    onGoToEnd(caption.id)
+                    onGoToEnd(
+                        caption.id
+                    )
                 }
             )
 
@@ -1332,14 +1941,25 @@ private fun CaptionCard(
     onGoToEnd: () -> Unit
 ) {
 
-    var text by remember(caption.id) {
-        mutableStateOf(caption.text)
+    var text by remember(
+        caption.id
+    ) {
+        mutableStateOf(
+            caption.text
+        )
     }
 
-    LaunchedEffect(caption.text) {
+    LaunchedEffect(
+        caption.text
+    ) {
 
-        if (text != caption.text) {
-            text = caption.text
+        if (
+            text !=
+            caption.text
+        ) {
+
+            text =
+                caption.text
         }
     }
 
@@ -1353,9 +1973,13 @@ private fun CaptionCard(
             CardDefaults.cardColors(
                 containerColor =
                     if (selected)
-                        Color(0xFF303030)
+                        Color(
+                            0xFF303030
+                        )
                     else
-                        Color(0xFF1C1C1C)
+                        Color(
+                            0xFF1C1C1C
+                        )
             )
     ) {
 
@@ -1363,7 +1987,9 @@ private fun CaptionCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(10.dp)
+                    .padding(
+                        10.dp
+                    )
         ) {
 
             Row(
@@ -1374,10 +2000,14 @@ private fun CaptionCard(
             ) {
 
                 Text(
-                    text = "#${caption.id}",
+                    text =
+                        "#${caption.id}",
                     color =
-                        Color(0xFFFFD54F),
-                    fontSize = 13.sp
+                        Color(
+                            0xFFFFD54F
+                        ),
+                    fontSize =
+                        13.sp
                 )
 
                 Spacer(
@@ -1386,7 +2016,8 @@ private fun CaptionCard(
                 )
 
                 TextButton(
-                    onClick = onSelect
+                    onClick =
+                        onSelect
                 ) {
 
                     Text(
@@ -1399,41 +2030,59 @@ private fun CaptionCard(
 
                 Spacer(
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 )
 
                 TextButton(
-                    onClick = onDelete
+                    onClick =
+                        onDelete
                 ) {
 
                     Text(
                         "حذف",
                         color =
-                            Color(0xFFFF8A80)
+                            Color(
+                                0xFFFF8A80
+                            )
                     )
                 }
             }
 
             OutlinedTextField(
-                value = text,
-                onValueChange = { value ->
+                value =
+                    text,
 
-                    text = value
+                onValueChange = {
+                    value ->
+
+                    text =
+                        value
 
                     onUpdate {
 
                         it.copy(
-                            text = value
+                            text =
+                                value
                         )
                     }
                 },
+
                 label = {
-                    Text("متن کپشن")
+                    Text(
+                        "متن کپشن"
+                    )
                 },
+
                 modifier =
                     Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 5
+
+                minLines =
+                    2,
+
+                maxLines =
+                    5
             )
 
             Spacer(
@@ -1443,11 +2092,14 @@ private fun CaptionCard(
 
             Text(
                 text =
-                    "${formatTime(caption.startTime)}  →  " +
-                        formatTime(caption.endTime),
+                    "${formatTime(caption.startTime)} → " +
+                        formatTime(
+                            caption.endTime
+                        ),
                 color =
                     Color.LightGray,
-                fontSize = 12.sp
+                fontSize =
+                    12.sp
             )
 
             Spacer(
@@ -1459,23 +2111,37 @@ private fun CaptionCard(
                 modifier =
                     Modifier.fillMaxWidth(),
                 horizontalArrangement =
-                    Arrangement.spacedBy(6.dp)
+                    Arrangement.spacedBy(
+                        6.dp
+                    )
             ) {
 
                 OutlinedButton(
-                    onClick = onSetStart,
+                    onClick =
+                        onSetStart,
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 ) {
-                    Text("ثبت شروع")
+
+                    Text(
+                        "ثبت شروع"
+                    )
                 }
 
                 OutlinedButton(
-                    onClick = onSetEnd,
+                    onClick =
+                        onSetEnd,
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 ) {
-                    Text("ثبت پایان")
+
+                    Text(
+                        "ثبت پایان"
+                    )
                 }
             }
 
@@ -1483,23 +2149,37 @@ private fun CaptionCard(
                 modifier =
                     Modifier.fillMaxWidth(),
                 horizontalArrangement =
-                    Arrangement.spacedBy(6.dp)
+                    Arrangement.spacedBy(
+                        6.dp
+                    )
             ) {
 
                 TextButton(
-                    onClick = onGoToStart,
+                    onClick =
+                        onGoToStart,
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 ) {
-                    Text("برو شروع")
+
+                    Text(
+                        "برو شروع"
+                    )
                 }
 
                 TextButton(
-                    onClick = onGoToEnd,
+                    onClick =
+                        onGoToEnd,
                     modifier =
-                        Modifier.weight(1f)
+                        Modifier.weight(
+                            1f
+                        )
                 ) {
-                    Text("برو پایان")
+
+                    Text(
+                        "برو پایان"
+                    )
                 }
             }
 
@@ -1508,19 +2188,23 @@ private fun CaptionCard(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            vertical = 8.dp
+                            vertical =
+                                8.dp
                         )
             )
 
             Text(
-                text = "استایل",
-                color = Color.White
+                text =
+                    "استایل",
+                color =
+                    Color.White
             )
 
             Text(
                 text =
                     "اندازه فونت: " +
-                        style.fontSize.roundToInt(),
+                        style.fontSize
+                            .roundToInt(),
                 color =
                     Color.LightGray
             )
@@ -1528,7 +2212,9 @@ private fun CaptionCard(
             Slider(
                 value =
                     style.fontSize,
-                onValueChange = { value ->
+
+                onValueChange = {
+                    value ->
 
                     onUpdate {
 
@@ -1541,6 +2227,7 @@ private fun CaptionCard(
                         )
                     }
                 },
+
                 valueRange =
                     14f..60f
             )
@@ -1562,7 +2249,9 @@ private fun CaptionCard(
             ) {
 
                 Text(
-                    if (style.bold)
+                    if (
+                        style.bold
+                    )
                         "✓ Bold"
                     else
                         "Bold"
@@ -1573,7 +2262,8 @@ private fun CaptionCard(
                 text =
                     "موقعیت عمودی: " +
                         (
-                            style.position * 100
+                            style.position *
+                                100
                         ).roundToInt() +
                         "%",
                 color =
@@ -1583,7 +2273,9 @@ private fun CaptionCard(
             Slider(
                 value =
                     style.position,
-                onValueChange = { value ->
+
+                onValueChange = {
+                    value ->
 
                     onUpdate {
 
@@ -1596,12 +2288,14 @@ private fun CaptionCard(
                         )
                     }
                 },
+
                 valueRange =
                     0.05f..0.95f
             )
 
             Text(
-                text = "چیدمان",
+                text =
+                    "چیدمان",
                 color =
                     Color.LightGray
             )
@@ -1619,7 +2313,8 @@ private fun CaptionCard(
                     "LEFT",
                     "CENTER",
                     "RIGHT"
-                ).forEach { alignment ->
+                ).forEach {
+                    alignment ->
 
                     TextButton(
                         onClick = {
@@ -1651,7 +2346,8 @@ private fun CaptionCard(
             }
 
             Text(
-                text = "Animation",
+                text =
+                    "Animation",
                 color =
                     Color.LightGray
             )
@@ -1665,8 +2361,10 @@ private fun CaptionCard(
                         )
             ) {
 
-                CaptionAnimation.entries
-                    .forEach { animation ->
+                CaptionAnimation
+                    .entries
+                    .forEach {
+                        animation ->
 
                         TextButton(
                             onClick = {
@@ -1698,11 +2396,14 @@ private fun CaptionCard(
             }
 
             CaptionOverlay(
-                caption = caption,
+                caption =
+                    caption,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(120.dp)
+                        .height(
+                            120.dp
+                        )
             )
         }
     }
@@ -1711,14 +2412,17 @@ private fun CaptionCard(
 @Composable
 private fun CaptionOverlay(
     caption: Caption,
-    modifier: Modifier = Modifier
+    modifier: Modifier =
+        Modifier
 ) {
 
     val style =
         caption.style
 
     val horizontalAlignment =
-        when (style.alignment) {
+        when (
+            style.alignment
+        ) {
 
             "LEFT" ->
                 Alignment.CenterStart
@@ -1731,7 +2435,9 @@ private fun CaptionOverlay(
         }
 
     val textAlign =
-        when (style.alignment) {
+        when (
+            style.alignment
+        ) {
 
             "LEFT" ->
                 TextAlign.Left
@@ -1745,10 +2451,11 @@ private fun CaptionOverlay(
 
     Box(
         modifier =
-            modifier
-                .clip(
-                    RoundedCornerShape(8.dp)
+            modifier.clip(
+                RoundedCornerShape(
+                    8.dp
                 )
+            )
     ) {
 
         Box(
@@ -1760,19 +2467,22 @@ private fun CaptionOverlay(
                             (
                                 style.position *
                                     80
-                                ).dp
+                            ).dp
                     ),
             contentAlignment =
                 horizontalAlignment
         ) {
 
             AnimatedVisibility(
-                visible = true,
+                visible =
+                    true,
+
                 enter =
                     animationEnter(
                         style.animation,
                         style.animationDuration
                     ),
+
                 exit =
                     animationExit(
                         style.animation,
@@ -1781,22 +2491,34 @@ private fun CaptionOverlay(
             ) {
 
                 Text(
-                    text = caption.text,
+                    text =
+                        caption.text,
+
                     color =
-                        Color(style.textColor),
+                        Color(
+                            style.textColor
+                        ),
+
                     fontSize =
                         style.fontSize.sp,
+
                     fontWeight =
-                        if (style.bold)
+                        if (
+                            style.bold
+                        )
                             FontWeight.Bold
                         else
                             FontWeight.Normal,
+
                     textAlign =
                         textAlign,
+
                     modifier =
                         Modifier
                             .clip(
-                                RoundedCornerShape(6.dp)
+                                RoundedCornerShape(
+                                    6.dp
+                                )
                             )
                             .background(
                                 Color(
@@ -1804,8 +2526,10 @@ private fun CaptionOverlay(
                                 )
                             )
                             .padding(
-                                horizontal = 10.dp,
-                                vertical = 6.dp
+                                horizontal =
+                                    10.dp,
+                                vertical =
+                                    6.dp
                             )
                 )
             }
@@ -1814,14 +2538,18 @@ private fun CaptionOverlay(
 }
 
 private fun animationEnter(
-    animation: CaptionAnimation,
+    animation:
+        CaptionAnimation,
     duration: Int
 ): EnterTransition {
 
-    return when (animation) {
+    return when (
+        animation
+    ) {
 
         CaptionAnimation.NONE,
         CaptionAnimation.FADE ->
+
             fadeIn(
                 animationSpec =
                     tween<Float>(
@@ -1830,6 +2558,7 @@ private fun animationEnter(
             )
 
         CaptionAnimation.SLIDE_UP ->
+
             slideInVertically(
                 animationSpec =
                     tween<IntOffset>(
@@ -1841,6 +2570,7 @@ private fun animationEnter(
             )
 
         CaptionAnimation.SLIDE_DOWN ->
+
             slideInVertically(
                 animationSpec =
                     tween<IntOffset>(
@@ -1852,6 +2582,7 @@ private fun animationEnter(
             )
 
         CaptionAnimation.SLIDE_LEFT ->
+
             slideInHorizontally(
                 animationSpec =
                     tween<IntOffset>(
@@ -1863,6 +2594,7 @@ private fun animationEnter(
             )
 
         CaptionAnimation.SLIDE_RIGHT ->
+
             slideInHorizontally(
                 animationSpec =
                     tween<IntOffset>(
@@ -1876,14 +2608,18 @@ private fun animationEnter(
 }
 
 private fun animationExit(
-    animation: CaptionAnimation,
+    animation:
+        CaptionAnimation,
     duration: Int
 ): ExitTransition {
 
-    return when (animation) {
+    return when (
+        animation
+    ) {
 
         CaptionAnimation.NONE,
         CaptionAnimation.FADE ->
+
             fadeOut(
                 animationSpec =
                     tween<Float>(
@@ -1892,6 +2628,7 @@ private fun animationExit(
             )
 
         CaptionAnimation.SLIDE_UP ->
+
             slideOutVertically(
                 animationSpec =
                     tween<IntOffset>(
@@ -1903,6 +2640,7 @@ private fun animationExit(
             )
 
         CaptionAnimation.SLIDE_DOWN ->
+
             slideOutVertically(
                 animationSpec =
                     tween<IntOffset>(
@@ -1914,6 +2652,7 @@ private fun animationExit(
             )
 
         CaptionAnimation.SLIDE_LEFT ->
+
             slideOutHorizontally(
                 animationSpec =
                     tween<IntOffset>(
@@ -1925,6 +2664,7 @@ private fun animationExit(
             )
 
         CaptionAnimation.SLIDE_RIGHT ->
+
             slideOutHorizontally(
                 animationSpec =
                     tween<IntOffset>(
@@ -1938,9 +2678,11 @@ private fun animationExit(
 }
 
 private fun updateCaption(
-    captions: MutableList<Caption>,
+    captions:
+        MutableList<Caption>,
     id: Int,
-    transform: (Caption) -> Caption
+    transform:
+        (Caption) -> Caption
 ) {
 
     val index =
@@ -1948,7 +2690,9 @@ private fun updateCaption(
             it.id == id
         }
 
-    if (index >= 0) {
+    if (
+        index >= 0
+    ) {
 
         captions[index] =
             transform(
@@ -1963,36 +2707,54 @@ private fun parseSrt(
 
     val normalized =
         content
-            .replace("\r\n", "\n")
-            .replace("\r", "\n")
+            .replace(
+                "\r\n",
+                "\n"
+            )
+            .replace(
+                "\r",
+                "\n"
+            )
 
     val blocks =
         normalized.split(
-            Regex("\n\\s*\n")
+            Regex(
+                "\n\\s*\n"
+            )
         )
 
     val result =
         mutableListOf<LocalTranscriptSegment>()
 
-    for (block in blocks) {
+    for (
+        block in blocks
+    ) {
 
         val lines =
             block.lines()
 
         val timeIndex =
             lines.indexOfFirst {
-                it.contains("-->")
+                it.contains(
+                    "-->"
+                )
             }
 
-        if (timeIndex < 0) {
+        if (
+            timeIndex < 0
+        ) {
             continue
         }
 
         val parts =
             lines[timeIndex]
-                .split("-->")
+                .split(
+                    "-->"
+                )
 
-        if (parts.size < 2) {
+        if (
+            parts.size < 2
+        ) {
             continue
         }
 
@@ -2005,7 +2767,9 @@ private fun parseSrt(
             parseSrtTime(
                 parts[1]
                     .trim()
-                    .split(" ")
+                    .split(
+                        " "
+                    )
                     .firstOrNull()
                     ?: ""
             )
@@ -2020,17 +2784,26 @@ private fun parseSrt(
 
         val text =
             lines
-                .drop(timeIndex + 1)
-                .joinToString("\n")
+                .drop(
+                    timeIndex + 1
+                )
+                .joinToString(
+                    "\n"
+                )
                 .trim()
 
-        if (text.isNotBlank()) {
+        if (
+            text.isNotBlank()
+        ) {
 
             result.add(
                 LocalTranscriptSegment(
-                    text = text,
-                    startTime = start,
-                    endTime = end
+                    text =
+                        text,
+                    startTime =
+                        start,
+                    endTime =
+                        end
                 )
             )
         }
@@ -2051,7 +2824,9 @@ private fun parseSrtTime(
         )
 
     val match =
-        regex.find(value)
+        regex.find(
+            value
+        )
             ?: return null
 
     val h =
@@ -2085,23 +2860,31 @@ private fun formatSrtTime(
 ): String {
 
     val safe =
-        milliseconds.coerceAtLeast(0L)
+        milliseconds.coerceAtLeast(
+            0L
+        )
 
     val hours =
-        safe / 3_600_000L
+        safe /
+            3_600_000L
 
     val minutes =
         (
-            safe % 3_600_000L
-        ) / 60_000L
+            safe %
+                3_600_000L
+        ) /
+            60_000L
 
     val seconds =
         (
-            safe % 60_000L
-        ) / 1_000L
+            safe %
+                60_000L
+        ) /
+            1_000L
 
     val millis =
-        safe % 1_000L
+        safe %
+            1_000L
 
     return String.format(
         "%02d:%02d:%02d,%03d",
@@ -2113,7 +2896,8 @@ private fun formatSrtTime(
 }
 
 private fun buildSrt(
-    captions: List<Caption>
+    captions:
+        List<Caption>
 ): String {
 
     val sorted =
@@ -2127,8 +2911,13 @@ private fun buildSrt(
             index,
             caption ->
 
-            append(index + 1)
-            append("\n")
+            append(
+                index + 1
+            )
+
+            append(
+                "\n"
+            )
 
             append(
                 formatSrtTime(
@@ -2136,7 +2925,9 @@ private fun buildSrt(
                 )
             )
 
-            append(" --> ")
+            append(
+                " --> "
+            )
 
             append(
                 formatSrtTime(
@@ -2144,21 +2935,28 @@ private fun buildSrt(
                 )
             )
 
-            append("\n")
+            append(
+                "\n"
+            )
 
             append(
                 caption.text.trim()
             )
 
-            append("\n\n")
+            append(
+                "\n\n"
+            )
         }
     }
 }
 
 private fun buildProjectJson(
-    captions: List<Caption>,
-    videoUri: Uri?,
-    selectedCaptionId: Int?
+    captions:
+        List<Caption>,
+    videoUri:
+        Uri?,
+    selectedCaptionId:
+        Int?
 ): String {
 
     val root =
@@ -2189,7 +2987,8 @@ private fun buildProjectJson(
     val array =
         JSONArray()
 
-    captions.forEach { caption ->
+    captions.forEach {
+        caption ->
 
         val item =
             JSONObject()
@@ -2272,7 +3071,9 @@ private fun buildProjectJson(
             style
         )
 
-        array.put(item)
+        array.put(
+            item
+        )
     }
 
     root.put(
@@ -2280,7 +3081,9 @@ private fun buildProjectJson(
         array
     )
 
-    return root.toString(2)
+    return root.toString(
+        2
+    )
 }
 
 private fun parseProjectJson(
@@ -2288,13 +3091,19 @@ private fun parseProjectJson(
 ): LoadedProject {
 
     val root =
-        JSONObject(content)
+        JSONObject(
+            content
+        )
 
     val savedVideo =
         if (
-            root.isNull("videoUri")
+            root.isNull(
+                "videoUri"
+            )
         ) {
+
             null
+
         } else {
 
             root.optString(
@@ -2315,21 +3124,25 @@ private fun parseProjectJson(
                 "selectedCaptionId"
             )
         ) {
+
             null
+
         } else {
 
             root.optInt(
                 "selectedCaptionId",
                 -1
-            ).takeIf {
-                it > 0
-            }
+            )
+                .takeIf {
+                    it > 0
+                }
         }
 
     val array =
         root.optJSONArray(
             "captions"
-        ) ?: JSONArray()
+        )
+            ?: JSONArray()
 
     val result =
         mutableListOf<Caption>()
@@ -2340,7 +3153,9 @@ private fun parseProjectJson(
     ) {
 
         val item =
-            array.optJSONObject(index)
+            array.optJSONObject(
+                index
+            )
                 ?: continue
 
         val text =
@@ -2376,85 +3191,104 @@ private fun parseProjectJson(
         val animation =
             try {
 
-                CaptionAnimation.valueOf(
-                    styleJson?.optString(
-                        "animation",
-                        CaptionAnimation.NONE.name
+                CaptionAnimation
+                    .valueOf(
+                        styleJson?.optString(
+                            "animation",
+                            CaptionAnimation
+                                .NONE
+                                .name
+                        )
+                            ?: CaptionAnimation
+                                .NONE
+                                .name
                     )
-                        ?: CaptionAnimation.NONE.name
-                )
 
-            } catch (_: Exception) {
+            } catch (
+                _: Exception
+            ) {
 
                 CaptionAnimation.NONE
             }
 
         val style =
             CaptionStyle(
+
                 fontSize =
-                    styleJson?.optDouble(
-                        "fontSize",
-                        28.0
-                    )?.toFloat()
+                    styleJson
+                        ?.optDouble(
+                            "fontSize",
+                            28.0
+                        )
+                        ?.toFloat()
                         ?: 28f,
 
                 textColor =
-                    styleJson?.optLong(
-                        "textColor",
-                        0xFFFFFFFF
-                    )
+                    styleJson
+                        ?.optLong(
+                            "textColor",
+                            0xFFFFFFFF
+                        )
                         ?: 0xFFFFFFFF,
 
                 backgroundColor =
-                    styleJson?.optLong(
-                        "backgroundColor",
-                        0x99000000
-                    )
+                    styleJson
+                        ?.optLong(
+                            "backgroundColor",
+                            0x99000000
+                        )
                         ?: 0x99000000,
 
                 bold =
-                    styleJson?.optBoolean(
-                        "bold",
-                        false
-                    )
+                    styleJson
+                        ?.optBoolean(
+                            "bold",
+                            false
+                        )
                         ?: false,
 
                 alignment =
-                    styleJson?.optString(
-                        "alignment",
-                        "CENTER"
-                    )
+                    styleJson
+                        ?.optString(
+                            "alignment",
+                            "CENTER"
+                        )
                         ?: "CENTER",
 
                 position =
-                    styleJson?.optDouble(
-                        "position",
-                        0.82
-                    )?.toFloat()
+                    styleJson
+                        ?.optDouble(
+                            "position",
+                            0.82
+                        )
+                        ?.toFloat()
                         ?: 0.82f,
 
                 highlightEnabled =
-                    styleJson?.optBoolean(
-                        "highlightEnabled",
-                        false
-                    )
+                    styleJson
+                        ?.optBoolean(
+                            "highlightEnabled",
+                            false
+                        )
                         ?: false,
 
                 highlightColor =
-                    styleJson?.optLong(
-                        "highlightColor",
-                        0xFFFFD54F
-                    )
+                    styleJson
+                        ?.optLong(
+                            "highlightColor",
+                            0xFFFFD54F
+                        )
                         ?: 0xFFFFD54F,
 
                 animation =
                     animation,
 
                 animationDuration =
-                    styleJson?.optInt(
-                        "animationDuration",
-                        350
-                    )
+                    styleJson
+                        ?.optInt(
+                            "animationDuration",
+                            350
+                        )
                         ?: 350
             )
 
@@ -2465,10 +3299,18 @@ private fun parseProjectJson(
                         "id",
                         index + 1
                     ),
-                text = text,
-                startTime = start,
-                endTime = end,
-                style = style
+
+                text =
+                    text,
+
+                startTime =
+                    start,
+
+                endTime =
+                    end,
+
+                style =
+                    style
             )
         )
     }
@@ -2478,8 +3320,10 @@ private fun parseProjectJson(
             result.sortedBy {
                 it.startTime
             },
+
         videoUri =
             savedVideo,
+
         selectedCaptionId =
             selected
     )
@@ -2490,16 +3334,20 @@ private fun formatTime(
 ): String {
 
     val totalSeconds =
-        milliseconds / 1000L
+        milliseconds /
+            1000L
 
     val minutes =
-        totalSeconds / 60L
+        totalSeconds /
+            60L
 
     val seconds =
-        totalSeconds % 60L
+        totalSeconds %
+            60L
 
     val millis =
-        milliseconds % 1000L
+        milliseconds %
+            1000L
 
     return String.format(
         "%02d:%02d.%03d",
