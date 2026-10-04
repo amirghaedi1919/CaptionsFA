@@ -1,6 +1,7 @@
 package com.daboua.captions
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -19,10 +20,17 @@ data class LocalTranscriptSegment(
 
 object LocalWhisper {
 
-    private const val MODEL_NAME = "ggml-tiny-q5_1.bin"
+    /*
+     * مدل Base برای فارسی از Tiny مناسب‌تر است
+     * و هنوز برای موبایل اندازه قابل‌قبولی دارد.
+     *
+     * حدود 60MB.
+     */
+    private const val MODEL_NAME =
+        "ggml-base-q5_1.bin"
 
     private const val MODEL_URL =
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin"
 
     fun transcribeVideo(
         context: Context,
@@ -30,7 +38,8 @@ object LocalWhisper {
         threads: Int = 4
     ): List<LocalTranscriptSegment> {
 
-        val modelFile = ensureModel(context)
+        val modelFile =
+            ensureModel(context)
 
         val audio =
             decodeAudioTo16kMono(
@@ -59,9 +68,13 @@ object LocalWhisper {
 
             val result =
                 WhisperNative.transcribe(
-                    nativeContext,
-                    audio,
-                    threads.coerceIn(1, 8)
+                    context = nativeContext,
+                    audio = audio,
+                    numThreads =
+                        threads.coerceIn(
+                            1,
+                            8
+                        )
                 )
 
             if (result != 0) {
@@ -75,7 +88,7 @@ object LocalWhisper {
                     nativeContext
                 )
 
-            val segments =
+            val rawSegments =
                 ArrayList<LocalTranscriptSegment>(
                     count
                 )
@@ -88,8 +101,16 @@ object LocalWhisper {
                             nativeContext,
                             index
                         )
-                        .trim()
+                        .cleanCaptionText()
 
+                if (text.isBlank()) {
+                    continue
+                }
+
+                /*
+                 * whisper.cpp timestamp:
+                 * هر واحد = 10ms
+                 */
                 val start =
                     WhisperNative
                         .getSegmentStart(
@@ -105,20 +126,27 @@ object LocalWhisper {
                         ) * 10L
 
                 if (
-                    text.isNotBlank() &&
-                    end > start
+                    end > start &&
+                    end - start >= 150L
                 ) {
-                    segments.add(
+
+                    rawSegments.add(
                         LocalTranscriptSegment(
                             text = text,
-                            startTime = start,
-                            endTime = end
+                            startTime =
+                                start.coerceAtLeast(0L),
+                            endTime =
+                                end.coerceAtLeast(
+                                    start + 150L
+                                )
                         )
                     )
                 }
             }
 
-            return segments
+            return normalizeSegments(
+                rawSegments
+            )
 
         } finally {
 
@@ -126,6 +154,89 @@ object LocalWhisper {
                 nativeContext
             )
         }
+    }
+
+    private fun String.cleanCaptionText(): String {
+
+        return this
+            .replace(
+                Regex(
+                    "\\s+"
+                ),
+                " "
+            )
+            .replace(
+                " ،",
+                "،"
+            )
+            .replace(
+                " .",
+                "."
+            )
+            .replace(
+                " ؟",
+                "؟"
+            )
+            .replace(
+                " !",
+                "!"
+            )
+            .trim()
+    }
+
+    private fun normalizeSegments(
+        source: List<LocalTranscriptSegment>
+    ): List<LocalTranscriptSegment> {
+
+        if (source.isEmpty()) {
+            return emptyList()
+        }
+
+        val sorted =
+            source
+                .sortedBy {
+                    it.startTime
+                }
+
+        val result =
+            ArrayList<LocalTranscriptSegment>()
+
+        var previousEnd = 0L
+
+        for (segment in sorted) {
+
+            var start =
+                segment.startTime
+
+            var end =
+                segment.endTime
+
+            if (start < previousEnd) {
+                start = previousEnd
+            }
+
+            if (end <= start) {
+                continue
+            }
+
+            /*
+             * فاصله‌های غیرمنطقی بین دو Segment
+             * را دستکاری نمی‌کنیم؛ timestamp واقعی
+             * Whisper حفظ می‌شود.
+             */
+
+            result.add(
+                LocalTranscriptSegment(
+                    text = segment.text.trim(),
+                    startTime = start,
+                    endTime = end
+                )
+            )
+
+            previousEnd = end
+        }
+
+        return result
     }
 
     private fun ensureModel(
@@ -148,9 +259,12 @@ object LocalWhisper {
                 MODEL_NAME
             )
 
+        /*
+         * Base Q5 حدود 60MB است.
+         */
         if (
             modelFile.exists() &&
-            modelFile.length() > 1_000_000L
+            modelFile.length() > 50_000_000L
         ) {
             return modelFile
         }
@@ -161,24 +275,44 @@ object LocalWhisper {
                 "$MODEL_NAME.download"
             )
 
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+
         val connection =
-            URL(MODEL_URL)
+            URL(
+                MODEL_URL
+            )
                 .openConnection()
                 as HttpURLConnection
 
         try {
 
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 30_000
-            connection.readTimeout = 300_000
-            connection.instanceFollowRedirects = true
+            connection.requestMethod =
+                "GET"
 
-            val code =
+            connection.connectTimeout =
+                30_000
+
+            connection.readTimeout =
+                300_000
+
+            connection.instanceFollowRedirects =
+                true
+
+            connection.setRequestProperty(
+                "User-Agent",
+                "CaptionsFA/1.0"
+            )
+
+            val responseCode =
                 connection.responseCode
 
-            if (code !in 200..299) {
+            if (
+                responseCode !in 200..299
+            ) {
                 throw IllegalStateException(
-                    "دانلود مدل ناموفق بود: HTTP $code"
+                    "دانلود مدل ناموفق بود: HTTP $responseCode"
                 )
             }
 
@@ -189,12 +323,16 @@ object LocalWhisper {
                 ).use { output ->
 
                     val buffer =
-                        ByteArray(64 * 1024)
+                        ByteArray(
+                            64 * 1024
+                        )
 
                     while (true) {
 
                         val read =
-                            input.read(buffer)
+                            input.read(
+                                buffer
+                            )
 
                         if (read <= 0) {
                             break
@@ -213,7 +351,8 @@ object LocalWhisper {
 
             if (
                 !tempFile.exists() ||
-                tempFile.length() < 1_000_000L
+                tempFile.length() <
+                    50_000_000L
             ) {
                 throw IllegalStateException(
                     "فایل مدل ناقص دانلود شده است"
@@ -229,16 +368,19 @@ object LocalWhisper {
                     modelFile
                 )
             ) {
+
                 tempFile.copyTo(
                     modelFile,
                     overwrite = true
                 )
+
                 tempFile.delete()
             }
 
             return modelFile
 
         } finally {
+
             connection.disconnect()
         }
     }
@@ -253,21 +395,24 @@ object LocalWhisper {
 
         try {
 
-            context.contentResolver
-                .openFileDescriptor(
-                    uri,
-                    "r"
-                )
-                ?.use {
-                    extractor.setDataSource(
-                        it.fileDescriptor
+            val descriptor =
+                context.contentResolver
+                    .openFileDescriptor(
+                        uri,
+                        "r"
                     )
-                }
-                ?: throw IllegalStateException(
-                    "فایل ویدیو قابل خواندن نیست"
-                )
+                    ?: throw IllegalStateException(
+                        "فایل ویدیو قابل خواندن نیست"
+                    )
 
-            var audioTrack = -1
+            descriptor.use {
+                extractor.setDataSource(
+                    it.fileDescriptor
+                )
+            }
+
+            var audioTrack =
+                -1
 
             for (
                 index in
@@ -285,9 +430,14 @@ object LocalWhisper {
                     ) ?: ""
 
                 if (
-                    mime.startsWith("audio/")
+                    mime.startsWith(
+                        "audio/"
+                    )
                 ) {
-                    audioTrack = index
+
+                    audioTrack =
+                        index
+
                     break
                 }
             }
@@ -298,7 +448,9 @@ object LocalWhisper {
                 )
             }
 
-            extractor.selectTrack(audioTrack)
+            extractor.selectTrack(
+                audioTrack
+            )
 
             val inputFormat =
                 extractor.getTrackFormat(
@@ -308,9 +460,10 @@ object LocalWhisper {
             val mime =
                 inputFormat.getString(
                     MediaFormat.KEY_MIME
-                ) ?: throw IllegalStateException(
-                    "فرمت صوتی ویدیو مشخص نیست"
                 )
+                    ?: throw IllegalStateException(
+                        "فرمت صوتی ویدیو مشخص نیست"
+                    )
 
             val decoder =
                 MediaCodec.createDecoderByType(
@@ -341,8 +494,14 @@ object LocalWhisper {
                         MediaFormat.KEY_CHANNEL_COUNT
                     )
 
-                var inputDone = false
-                var outputDone = false
+                var pcmEncoding =
+                    AudioFormat.ENCODING_PCM_16BIT
+
+                var inputDone =
+                    false
+
+                var outputDone =
+                    false
 
                 val bufferInfo =
                     MediaCodec.BufferInfo()
@@ -356,14 +515,18 @@ object LocalWhisper {
                                 10_000
                             )
 
-                        if (inputIndex >= 0) {
+                        if (
+                            inputIndex >= 0
+                        ) {
 
                             val inputBuffer =
                                 decoder.getInputBuffer(
                                     inputIndex
                                 )
 
-                            if (inputBuffer != null) {
+                            if (
+                                inputBuffer != null
+                            ) {
 
                                 val sampleSize =
                                     extractor.readSampleData(
@@ -371,17 +534,21 @@ object LocalWhisper {
                                         0
                                     )
 
-                                if (sampleSize < 0) {
+                                if (
+                                    sampleSize < 0
+                                ) {
 
                                     decoder.queueInputBuffer(
                                         inputIndex,
                                         0,
                                         0,
                                         0,
-                                        MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                                        MediaCodec
+                                            .BUFFER_FLAG_END_OF_STREAM
                                     )
 
-                                    inputDone = true
+                                    inputDone =
+                                        true
 
                                 } else {
 
@@ -419,6 +586,49 @@ object LocalWhisper {
                                 bufferInfo.size > 0
                             ) {
 
+                                /*
+                                 * بعضی دستگاه‌ها اطلاعات PCM
+                                 * را در outputFormat اعلام می‌کنند.
+                                 */
+                                val outputFormat =
+                                    decoder.outputFormat
+
+                                if (
+                                    outputFormat.containsKey(
+                                        MediaFormat.KEY_SAMPLE_RATE
+                                    )
+                                ) {
+
+                                    sourceSampleRate =
+                                        outputFormat.getInteger(
+                                            MediaFormat.KEY_SAMPLE_RATE
+                                        )
+                                }
+
+                                if (
+                                    outputFormat.containsKey(
+                                        MediaFormat.KEY_CHANNEL_COUNT
+                                    )
+                                ) {
+
+                                    sourceChannels =
+                                        outputFormat.getInteger(
+                                            MediaFormat.KEY_CHANNEL_COUNT
+                                        )
+                                }
+
+                                if (
+                                    outputFormat.containsKey(
+                                        MediaFormat.KEY_PCM_ENCODING
+                                    )
+                                ) {
+
+                                    pcmEncoding =
+                                        outputFormat.getInteger(
+                                            MediaFormat.KEY_PCM_ENCODING
+                                        )
+                                }
+
                                 outputBuffer.position(
                                     bufferInfo.offset
                                 )
@@ -428,35 +638,77 @@ object LocalWhisper {
                                         bufferInfo.size
                                 )
 
-                                while (
-                                    outputBuffer.remaining() >=
-                                        2 * sourceChannels
+                                when (
+                                    pcmEncoding
                                 ) {
 
-                                    var mono = 0f
+                                    AudioFormat.ENCODING_PCM_FLOAT -> {
 
-                                    repeat(
-                                        sourceChannels
-                                    ) {
+                                        while (
+                                            outputBuffer.remaining()
+                                                >=
+                                            4 * sourceChannels
+                                        ) {
 
-                                        val value =
-                                            outputBuffer
-                                                .short
-                                                .toInt()
+                                            var mono =
+                                                0f
 
-                                        mono +=
-                                            value / 32768f
+                                            repeat(
+                                                sourceChannels
+                                            ) {
+
+                                                mono +=
+                                                    outputBuffer
+                                                        .float
+                                            }
+
+                                            mono /=
+                                                sourceChannels
+
+                                            samples.add(
+                                                mono.coerceIn(
+                                                    -1f,
+                                                    1f
+                                                )
+                                            )
+                                        }
                                     }
 
-                                    samples.add(
-                                        (
-                                            mono /
+                                    else -> {
+
+                                        while (
+                                            outputBuffer.remaining()
+                                                >=
+                                            2 * sourceChannels
+                                        ) {
+
+                                            var mono =
+                                                0f
+
+                                            repeat(
                                                 sourceChannels
-                                        ).coerceIn(
-                                            -1f,
-                                            1f
-                                        )
-                                    )
+                                            ) {
+
+                                                val value =
+                                                    outputBuffer
+                                                        .short
+                                                        .toInt()
+
+                                                mono +=
+                                                    value / 32768f
+                                            }
+
+                                            mono /=
+                                                sourceChannels
+
+                                            samples.add(
+                                                mono.coerceIn(
+                                                    -1f,
+                                                    1f
+                                                )
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -467,15 +719,19 @@ object LocalWhisper {
 
                             if (
                                 bufferInfo.flags and
-                                    MediaCodec.BUFFER_FLAG_END_OF_STREAM !=
-                                    0
+                                    MediaCodec
+                                        .BUFFER_FLAG_END_OF_STREAM
+                                    != 0
                             ) {
-                                outputDone = true
+
+                                outputDone =
+                                    true
                             }
                         }
 
                         outputIndex ==
-                            MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            MediaCodec
+                                .INFO_OUTPUT_FORMAT_CHANGED -> {
 
                             val format =
                                 decoder.outputFormat
@@ -485,6 +741,7 @@ object LocalWhisper {
                                     MediaFormat.KEY_SAMPLE_RATE
                                 )
                             ) {
+
                                 sourceSampleRate =
                                     format.getInteger(
                                         MediaFormat.KEY_SAMPLE_RATE
@@ -496,9 +753,22 @@ object LocalWhisper {
                                     MediaFormat.KEY_CHANNEL_COUNT
                                 )
                             ) {
+
                                 sourceChannels =
                                     format.getInteger(
                                         MediaFormat.KEY_CHANNEL_COUNT
+                                    )
+                            }
+
+                            if (
+                                format.containsKey(
+                                    MediaFormat.KEY_PCM_ENCODING
+                                )
+                            ) {
+
+                                pcmEncoding =
+                                    format.getInteger(
+                                        MediaFormat.KEY_PCM_ENCODING
                                     )
                             }
                         }
@@ -506,9 +776,12 @@ object LocalWhisper {
                 }
 
                 return resample(
-                    samples,
-                    sourceSampleRate,
-                    16_000
+                    source =
+                        samples,
+                    sourceRate =
+                        sourceSampleRate,
+                    targetRate =
+                        16_000
                 )
 
             } finally {
@@ -522,6 +795,7 @@ object LocalWhisper {
             }
 
         } finally {
+
             extractor.release()
         }
     }
@@ -542,7 +816,11 @@ object LocalWhisper {
             )
         }
 
-        if (sourceRate == targetRate) {
+        if (
+            sourceRate ==
+                targetRate
+        ) {
+
             return source.toFloatArray()
         }
 
@@ -551,30 +829,39 @@ object LocalWhisper {
                 source.size.toDouble() *
                     targetRate.toDouble() /
                     sourceRate.toDouble()
-            ).roundToInt()
+            )
+                .roundToInt()
                 .coerceAtLeast(1)
 
         val output =
-            FloatArray(outputSize)
+            FloatArray(
+                outputSize
+            )
 
         val ratio =
             sourceRate.toDouble() /
                 targetRate.toDouble()
 
-        for (i in output.indices) {
+        for (
+            i in
+            output.indices
+        ) {
 
             val position =
                 i * ratio
 
             val left =
-                position.toInt()
+                position
+                    .toInt()
                     .coerceIn(
                         0,
                         source.lastIndex
                     )
 
             val right =
-                (left + 1)
+                (
+                    left + 1
+                )
                     .coerceAtMost(
                         source.lastIndex
                     )
@@ -590,7 +877,8 @@ object LocalWhisper {
                     (
                         source[right] -
                             source[left]
-                    ) * fraction
+                    ) *
+                    fraction
         }
 
         return output
