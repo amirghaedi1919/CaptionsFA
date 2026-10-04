@@ -20,6 +20,9 @@ data class LocalTranscriptSegment(
 
 object LocalWhisper {
 
+    /*
+     * مدل کوچک‌تر برای سرعت بیشتر روی گوشی.
+     */
     private const val MODEL_NAME =
         "ggml-tiny-q5_1.bin"
 
@@ -27,19 +30,20 @@ object LocalWhisper {
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
 
     /*
-     * هر بار فقط چند ثانیه از صدا را به Whisper می‌دهیم.
+     * هر بار تقریباً 3.5 ثانیه صدا پردازش می‌شود.
      *
-     * مزیت:
-     * ویدیو لازم نیست کامل پردازش شود.
-     * اولین کپشن خیلی زودتر ظاهر می‌شود.
+     * هرچه کمتر باشد:
+     * - کپشن زودتر می‌آید
+     * - ولی احتمال اشتباه بیشتر می‌شود
+     *
+     * فعلاً این مقدار را برای تعادل سرعت/دقت گذاشته‌ایم.
      */
-    private const val CHUNK_MS = 4000L
+    private const val CHUNK_MS = 3500L
 
     /*
-     * کمی همپوشانی برای اینکه کلمه‌های مرزی
-     * بین دو قطعه از دست نروند.
+     * همپوشانی بین قطعات.
      */
-    private const val OVERLAP_MS = 700L
+    private const val OVERLAP_MS = 600L
 
     fun transcribeVideoStreaming(
         context: Context,
@@ -78,15 +82,17 @@ object LocalWhisper {
 
             if (duration <= 0L) {
                 throw IllegalStateException(
-                    "مدت صدای ویدیو قابل تشخیص نیست"
+                    "صدای قابل پردازش از ویدیو پیدا نشد"
                 )
             }
 
             var chunkStart = 0L
 
-            var lastEmittedEnd = 0L
+            var lastEmittedStart = -1000L
 
-            while (chunkStart < duration) {
+            while (
+                chunkStart < duration
+            ) {
 
                 val chunkEnd =
                     (
@@ -115,13 +121,14 @@ object LocalWhisper {
                             numThreads =
                                 threads.coerceIn(
                                     1,
-                                    8
+                                    6
                                 )
                         )
 
                     if (result != 0) {
+
                         throw IllegalStateException(
-                            "Whisper خطا داد: $result"
+                            "پردازش صوت توسط Whisper ناموفق بود: $result"
                         )
                     }
 
@@ -136,26 +143,18 @@ object LocalWhisper {
                         0 until count
                     ) {
 
-                        val rawText =
+                        val text =
                             WhisperNative
                                 .getSegmentText(
                                     nativeContext,
                                     index
                                 )
-
-                        val text =
-                            cleanText(
-                                rawText
-                            )
+                                .cleanText()
 
                         if (text.isBlank()) {
                             continue
                         }
 
-                        /*
-                         * timestampهای Whisper
-                         * در واحد 10ms هستند.
-                         */
                         val relativeStart =
                             WhisperNative
                                 .getSegmentStart(
@@ -178,9 +177,6 @@ object LocalWhisper {
                             chunkStart +
                                 relativeEnd
 
-                        /*
-                         * محدوده را به chunk محدود می‌کنیم.
-                         */
                         absoluteStart =
                             absoluteStart.coerceIn(
                                 chunkStart,
@@ -189,17 +185,16 @@ object LocalWhisper {
 
                         absoluteEnd =
                             absoluteEnd.coerceIn(
-                                absoluteStart + 100L,
+                                absoluteStart + 150L,
                                 chunkEnd
                             )
 
                         /*
-                         * همپوشانی بین chunkها باعث تکرار
-                         * Caption می‌شود؛ اینجا حذفش می‌کنیم.
+                         * حذف خروجی‌های تکراری ناشی از overlap.
                          */
                         if (
-                            absoluteEnd <=
-                                lastEmittedEnd + 150L
+                            absoluteStart <
+                                lastEmittedStart + 350L
                         ) {
                             continue
                         }
@@ -211,21 +206,19 @@ object LocalWhisper {
                             continue
                         }
 
-                        val segment =
+                        onSegment(
                             LocalTranscriptSegment(
-                                text = text,
+                                text =
+                                    text,
                                 startTime =
                                     absoluteStart,
                                 endTime =
                                     absoluteEnd
                             )
-
-                        onSegment(
-                            segment
                         )
 
-                        lastEmittedEnd =
-                            absoluteEnd
+                        lastEmittedStart =
+                            absoluteStart
                     }
                 }
 
@@ -235,8 +228,8 @@ object LocalWhisper {
                 )
 
                 /*
-                 * chunk بعدی کمی قبل از انتهای قبلی
-                 * شروع می‌شود تا کلمه‌های مرزی از دست نروند.
+                 * قطعه بعدی کمی قبل از قطعه قبلی
+                 * شروع می‌شود.
                  */
                 chunkStart =
                     (
@@ -256,7 +249,8 @@ object LocalWhisper {
     }
 
     /*
-     * برای سازگاری با نسخه قبلی پروژه.
+     * نسخه قدیمی را هم نگه می‌داریم
+     * تا بخش‌های قبلی پروژه خراب نشوند.
      */
     fun transcribeVideo(
         context: Context,
@@ -279,11 +273,9 @@ object LocalWhisper {
         return result
     }
 
-    private fun cleanText(
-        value: String
-    ): String {
+    private fun String.cleanText(): String {
 
-        return value
+        return this
             .replace(
                 Regex("\\s+"),
                 " "
@@ -327,6 +319,10 @@ object LocalWhisper {
                 MODEL_NAME
             )
 
+        /*
+         * اگر مدل قبلاً دانلود شده باشد،
+         * دیگر دانلود نمی‌شود.
+         */
         if (
             modelFile.exists() &&
             modelFile.length() >
@@ -371,12 +367,15 @@ object LocalWhisper {
                 "CaptionsFA/1.0"
             )
 
-            val code =
+            val responseCode =
                 connection.responseCode
 
-            if (code !in 200..299) {
+            if (
+                responseCode !in 200..299
+            ) {
+
                 throw IllegalStateException(
-                    "دانلود مدل ناموفق بود: HTTP $code"
+                    "دانلود مدل ناموفق بود: HTTP $responseCode"
                 )
             }
 
@@ -418,6 +417,7 @@ object LocalWhisper {
                 tempFile.length() <
                     10_000_000L
             ) {
+
                 throw IllegalStateException(
                     "فایل مدل ناقص دانلود شده است"
                 )
@@ -586,6 +586,11 @@ object LocalWhisper {
                 audioTrack
             )
 
+            extractor.seekTo(
+                startMs * 1000L,
+                MediaExtractor.SEEK_TO_CLOSEST_SYNC
+            )
+
             val inputFormat =
                 extractor.getTrackFormat(
                     audioTrack
@@ -625,12 +630,6 @@ object LocalWhisper {
 
             try {
 
-                extractor.seekTo(
-                    startMs * 1000L,
-                    MediaExtractor
-                        .SEEK_TO_CLOSEST_SYNC
-                )
-
                 val samples =
                     ArrayList<Float>()
 
@@ -655,7 +654,9 @@ object LocalWhisper {
                                 10_000
                             )
 
-                        if (inputIndex >= 0) {
+                        if (
+                            inputIndex >= 0
+                        ) {
 
                             val inputBuffer =
                                 decoder.getInputBuffer(
@@ -695,7 +696,9 @@ object LocalWhisper {
                                             0
                                         )
 
-                                    if (size < 0) {
+                                    if (
+                                        size < 0
+                                    ) {
 
                                         decoder.queueInputBuffer(
                                             inputIndex,
@@ -795,15 +798,14 @@ object LocalWhisper {
                                                     .float
                                         }
 
+                                        mono /=
+                                            sourceChannels
+
                                         samples.add(
-                                            (
-                                                mono /
-                                                    sourceChannels
+                                            mono.coerceIn(
+                                                -1f,
+                                                1f
                                             )
-                                                .coerceIn(
-                                                    -1f,
-                                                    1f
-                                                )
                                         )
                                     }
 
@@ -833,15 +835,14 @@ object LocalWhisper {
                                                     32768f
                                         }
 
+                                        mono /=
+                                            sourceChannels
+
                                         samples.add(
-                                            (
-                                                mono /
-                                                    sourceChannels
+                                            mono.coerceIn(
+                                                -1f,
+                                                1f
                                             )
-                                                .coerceIn(
-                                                    -1f,
-                                                    1f
-                                                )
                                         )
                                     }
                                 }
@@ -972,10 +973,9 @@ object LocalWhisper {
             val right =
                 (
                     left + 1
+                ).coerceAtMost(
+                    source.lastIndex
                 )
-                    .coerceAtMost(
-                        source.lastIndex
-                    )
 
             val fraction =
                 (
