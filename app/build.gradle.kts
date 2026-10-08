@@ -12,12 +12,23 @@ android {
         applicationId = "com.daboua.captions"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // هر بیلد جدید در GitHub یک شماره‌ی بزرگ‌تر می‌گیرد؛
+        // اندروید فقط وقتی اجازه‌ی آپدیت می‌دهد که این عدد بیشتر شود.
+        val buildNumber =
+            System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = buildNumber
+        versionName = "1.0.$buildNumber"
 
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
+                arguments += listOf(
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DWHISPER_BUILD_TESTS=OFF",
+                    "-DWHISPER_BUILD_EXAMPLES=OFF",
+                    "-DWHISPER_BUILD_SERVER=OFF",
+                    "-DGGML_OPENMP=OFF"
+                )
             }
         }
 
@@ -29,9 +40,24 @@ android {
         }
     }
 
+    // یک کلید امضای ثابت؛ بدون آن اندروید آپدیت را قبول نمی‌کند
+    // و کاربر مجبور می‌شود برنامه را پاک و دوباره نصب کند.
+    signingConfigs {
+        create("captions") {
+            storeFile = file("captions-release.jks")
+            storePassword = "CaptionsFA2026"
+            keyAlias = "captions"
+            keyPassword = "CaptionsFA2026"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("captions")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("captions")
         }
     }
 
