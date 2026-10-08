@@ -110,8 +110,21 @@ data class CaptionStyle(
     val highlightColor: Long = 0xFFFFD54F,
     val animation: CaptionAnimation =
         CaptionAnimation.NONE,
-    val animationDuration: Int = 350
+    val animationDuration: Int = 350,
+    val fontFamily: String = "SANS"
 )
+
+/*
+ * استایل پیش‌فرضِ پروژه؛ هر کپشن جدید با همین استایل ساخته می‌شود.
+ */
+object StyleStore {
+    @Volatile
+    var current: CaptionStyle = CaptionStyle(
+        fontSize = 26f,
+        bold = true,
+        animation = CaptionAnimation.FADE
+    )
+}
 
 data class Caption(
     val id: Int,
@@ -119,7 +132,7 @@ data class Caption(
     val startTime: Long,
     val endTime: Long,
     val style: CaptionStyle =
-        CaptionStyle()
+        StyleStore.current
 )
 
 private data class LoadedProject(
@@ -170,6 +183,14 @@ fun CaptionsFaApp() {
 
     var isTranscribing by remember {
         mutableStateOf(false)
+    }
+
+    var globalStyle by remember {
+        mutableStateOf(StyleStore.current)
+    }
+
+    var whisperQuality by remember {
+        mutableStateOf(LocalWhisper.quality)
     }
 
     var playerReference by remember {
@@ -250,238 +271,12 @@ fun CaptionsFaApp() {
                     1
 
                 isTranscribing =
-                    true
+                    false
 
                 message =
-                    "ویدیو آماده شد؛ کپشن‌گذاری همزمان شروع شد..."
+                    "ویدیو آماده است؛ استایل را انتخاب کن و دکمه «اجرای پروژه» را بزن"
 
-                /*
-                 * پردازش در Thread جدا.
-                 *
-                 * بنابراین UI و ویدیو قفل نمی‌شوند.
-                 */
-                thread {
 
-                    try {
-
-                        LocalWhisper
-                            .transcribeVideoStreaming(
-
-                                context =
-                                    context,
-
-                                uri =
-                                    uri,
-
-                                threads =
-                                    4,
-
-                                onSegment = {
-                                    segment ->
-
-                                    mainHandler.post {
-
-                                        /*
-                                         * اگر کاربر ویدیوی دیگری
-                                         * انتخاب کرده باشد، نتیجه
-                                         * این ویدیو دیگر معتبر نیست.
-                                         */
-                                        if (
-                                            transcriptionGeneration
-                                                .get() !=
-                                            generation
-                                        ) {
-                                            return@post
-                                        }
-
-                                        /*
-                                         * جلوگیری از کپشن تکراری.
-                                         */
-                                        val duplicate =
-                                            captions.any {
-
-                                                kotlin.math
-                                                    .abs(
-                                                        it.startTime -
-                                                            segment.startTime
-                                                    ) < 450L &&
-                                                    it.text
-                                                        .trim()
-                                                        .equals(
-                                                            segment.text
-                                                                .trim(),
-                                                            ignoreCase = true
-                                                        )
-                                            }
-
-                                        if (
-                                            duplicate
-                                        ) {
-                                            return@post
-                                        }
-
-                                        /*
-                                         * کپشن قبلی را اگر با کپشن
-                                         * جدید همپوشانی دارد کوتاه می‌کنیم.
-                                         */
-                                        val previous =
-                                            captions
-                                                .filter {
-                                                    it.startTime <=
-                                                        segment.startTime
-                                                }
-                                                .maxByOrNull {
-                                                    it.startTime
-                                                }
-
-                                        if (
-                                            previous != null &&
-                                            previous.endTime >
-                                                segment.startTime
-                                        ) {
-
-                                            updateCaption(
-                                                captions,
-                                                previous.id
-                                            ) {
-
-                                                it.copy(
-                                                    endTime =
-                                                        (
-                                                            segment.startTime -
-                                                                40L
-                                                        ).coerceAtLeast(
-                                                            it.startTime +
-                                                                150L
-                                                        )
-                                                )
-                                            }
-                                        }
-
-                                        val newId =
-                                            nextCaptionId
-
-                                        nextCaptionId++
-
-                                        captions.add(
-                                            Caption(
-                                                id =
-                                                    newId,
-                                                text =
-                                                    segment.text,
-                                                startTime =
-                                                    segment.startTime,
-                                                endTime =
-                                                    segment.endTime
-                                            )
-                                        )
-
-                                        /*
-                                         * مرتب‌سازی زمانی.
-                                         */
-                                        val sorted =
-                                            captions
-                                                .sortedBy {
-                                                    it.startTime
-                                                }
-
-                                        captions.clear()
-
-                                        captions.addAll(
-                                            sorted
-                                        )
-
-                                        selectedCaptionId =
-                                            newId
-
-                                        message =
-                                            "کپشن جدید ساخته شد: " +
-                                                segment.text
-                                    }
-                                },
-
-                                onProgress = {
-                                    done,
-                                    total ->
-
-                                    mainHandler.post {
-
-                                        if (
-                                            transcriptionGeneration
-                                                .get() !=
-                                            generation
-                                        ) {
-                                            return@post
-                                        }
-
-                                        val percent =
-                                            (
-                                                done.toFloat() /
-                                                    total
-                                                        .coerceAtLeast(
-                                                            1L
-                                                        )
-                                                        .toFloat()
-                                            )
-                                                .coerceIn(
-                                                    0f,
-                                                    1f
-                                                ) * 100f
-
-                                        message =
-                                            "کپشن‌گذاری زنده: " +
-                                                "${percent.toInt()}٪"
-                                    }
-                                }
-                            )
-
-                        mainHandler.post {
-
-                            if (
-                                transcriptionGeneration
-                                    .get() !=
-                                generation
-                            ) {
-                                return@post
-                            }
-
-                            isTranscribing =
-                                false
-
-                            message =
-                                if (
-                                    captions.isEmpty()
-                                ) {
-
-                                    "گفتاری برای تشخیص پیدا نشد"
-
-                                } else {
-
-                                    "${captions.size} کپشن ساخته شد"
-                                }
-                        }
-
-                    } catch (e: Exception) {
-
-                        mainHandler.post {
-
-                            if (
-                                transcriptionGeneration
-                                    .get() !=
-                                generation
-                            ) {
-                                return@post
-                            }
-
-                            isTranscribing =
-                                false
-
-                            message =
-                                e.message
-                                    ?: "خطا در کپشن‌گذاری"
-                        }
-                    }
-                }
             }
         }
 
@@ -932,6 +727,76 @@ fun CaptionsFaApp() {
 
                             try {
 
+                                /*
+                                 * اول سرور (سریع و دقیق)؛
+                                 * اگر در دسترس نبود، تشخیص روی گوشی.
+                                 */
+                                if (
+                                    ServerSettings
+                                        .isConfigured(context)
+                                ) {
+                                    val remoteResult =
+                                        try {
+                                            RemoteTranscriber
+                                                .transcribe(
+                                                    context,
+                                                    uri,
+                                                    ServerSettings
+                                                        .wordsPerCaption(
+                                                            context
+                                                        )
+                                                )
+                                        } catch (
+                                            e: Exception
+                                        ) {
+                                            null
+                                        }
+                                    if (
+                                        remoteResult != null &&
+                                        remoteResult.isNotEmpty()
+                                    ) {
+                                        mainHandler.post {
+                                            if (
+                                                transcriptionGeneration
+                                                    .get() !=
+                                                generation
+                                            ) {
+                                                return@post
+                                            }
+                                            for (
+                                                segment
+                                                in remoteResult
+                                            ) {
+                                                val id =
+                                                    nextCaptionId
+                                                nextCaptionId++
+                                                captions.add(
+                                                    Caption(
+                                                        id =
+                                                            id,
+                                                        text =
+                                                            segment.text,
+                                                        startTime =
+                                                            segment.startTime,
+                                                        endTime =
+                                                            segment.endTime
+                                                    )
+                                                )
+                                            }
+                                            isTranscribing =
+                                                false
+                                            message =
+                                                "${captions.size} " +
+                                                    "کپشن از سرور آماده شد"
+                                        }
+                                        return@thread
+                                    }
+                                    mainHandler.post {
+                                        message =
+                                            "سرور در دسترس نبود؛ " +
+                                                "تشخیص روی گوشی شروع شد..."
+                                    }
+                                }
                                 LocalWhisper
                                     .transcribeVideoStreaming(
 
@@ -1093,9 +958,11 @@ fun CaptionsFaApp() {
                         if (
                             isTranscribing
                         )
-                            "⏳ کپشن‌گذاری همزمان..."
+                            "⏳ در حال ساخت زیرنویس..."
+                        else if (captions.isEmpty())
+                            "▶ اجرای پروژه و ساخت زیرنویس"
                         else
-                            "🔄 بازسازی کپشن‌ها"
+                            "🔄 ساخت دوباره‌ی زیرنویس"
                     )
                 }
 
@@ -1127,6 +994,35 @@ fun CaptionsFaApp() {
                 Spacer(
                     modifier =
                         Modifier.height(8.dp)
+                )
+
+                GlobalStylePanel(
+                    style = globalStyle,
+                    quality = whisperQuality,
+                    onStyleChange = { newStyle ->
+                        globalStyle = newStyle
+                        StyleStore.current = newStyle
+                        for (index in captions.indices) {
+                            captions[index] =
+                                captions[index].copy(style = newStyle)
+                        }
+                    },
+                    onQualityChange = { q ->
+                        whisperQuality = q
+                        LocalWhisper.quality = q
+                    }
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.height(10.dp)
+                )
+
+                ServerCard()
+
+                Spacer(
+                    modifier =
+                        Modifier.height(10.dp)
                 )
 
                 Row(
@@ -3066,6 +2962,11 @@ private fun buildProjectJson(
             caption.style.animationDuration
         )
 
+        style.put(
+            "fontFamily",
+            caption.style.fontFamily
+        )
+
         item.put(
             "style",
             style
@@ -3289,7 +3190,15 @@ private fun parseProjectJson(
                             "animationDuration",
                             350
                         )
-                        ?: 350
+                        ?: 350,
+
+                fontFamily =
+                    styleJson
+                        ?.optString(
+                            "fontFamily",
+                            "SANS"
+                        )
+                        ?: "SANS"
             )
 
         result.add(
