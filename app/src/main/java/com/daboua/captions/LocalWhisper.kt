@@ -21,16 +21,34 @@ data class LocalTranscriptSegment(
 object LocalWhisper {
 
     /*
-     * مدل کوچک‌تر برای سرعت بیشتر روی گوشی.
+     * کیفیت تشخیص.
+     *
+     * FAST: مدل base؛ سریع‌تر و حجم کم (حدود ۶۰ مگابایت)
+     * ACCURATE: مدل small؛ برای فارسی خیلی دقیق‌تر (حدود ۱۹۰ مگابایت)
+     *
+     * مدل tiny قبلی برای فارسی اشتباه زیادی داشت.
      */
-    private const val MODEL_NAME =
-        "ggml-tiny-q5_1.bin"
+    enum class Quality(
+        val modelName: String,
+        val minBytes: Long
+    ) {
+        FAST("ggml-base-q5_1.bin", 40_000_000L),
+        ACCURATE("ggml-small-q5_1.bin", 150_000_000L)
+    }
 
-    private const val MODEL_URL =
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
+    @Volatile
+    var quality: Quality = Quality.ACCURATE
+
+    private val MODEL_NAME: String
+        get() = quality.modelName
+
+    private val MODEL_URL: String
+        get() =
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" +
+                quality.modelName
 
     /*
-     * هر بار تقریباً 3.5 ثانیه صدا پردازش می‌شود.
+     * هر بار تقریباً 8 ثانیه صدا پردازش می‌شود.
      *
      * هرچه کمتر باشد:
      * - کپشن زودتر می‌آید
@@ -38,12 +56,12 @@ object LocalWhisper {
      *
      * فعلاً این مقدار را برای تعادل سرعت/دقت گذاشته‌ایم.
      */
-    private const val CHUNK_MS = 3500L
+    private const val CHUNK_MS = 8000L
 
     /*
      * همپوشانی بین قطعات.
      */
-    private const val OVERLAP_MS = 600L
+    private const val OVERLAP_MS = 800L
 
     fun transcribeVideoStreaming(
         context: Context,
@@ -183,10 +201,15 @@ object LocalWhisper {
                                 chunkEnd
                             )
 
+                        /*
+                         * قبلاً اینجا coerceIn بود و وقتی کپشن نزدیک
+                         * انتهای قطعه شروع می‌شد برنامه خطا می‌داد
+                         * («maximum is less than minimum»).
+                         */
                         absoluteEnd =
-                            absoluteEnd.coerceIn(
+                            maxOf(
                                 absoluteStart + 150L,
-                                chunkEnd
+                                minOf(absoluteEnd, chunkEnd)
                             )
 
                         /*
@@ -326,7 +349,7 @@ object LocalWhisper {
         if (
             modelFile.exists() &&
             modelFile.length() >
-                10_000_000L
+                quality.minBytes
         ) {
             return modelFile
         }
@@ -415,7 +438,7 @@ object LocalWhisper {
             if (
                 !tempFile.exists() ||
                 tempFile.length() <
-                    10_000_000L
+                    quality.minBytes
             ) {
 
                 throw IllegalStateException(
@@ -448,6 +471,18 @@ object LocalWhisper {
             connection.disconnect()
         }
     }
+
+    internal fun audioDurationMs(
+        context: Context,
+        uri: Uri
+    ): Long = getAudioDuration(context, uri)
+
+    internal fun decodeChunk(
+        context: Context,
+        uri: Uri,
+        startMs: Long,
+        endMs: Long
+    ): FloatArray = decodeAudioChunk(context, uri, startMs, endMs)
 
     private fun getAudioDuration(
         context: Context,
