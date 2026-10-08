@@ -5,12 +5,19 @@ project("captions_whisper")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
 include(FetchContent)
 
 FetchContent_Declare(
     whispercpp
     GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
-    GIT_TAG master
+    GIT_TAG v1.7.5
     GIT_SHALLOW TRUE
 )
 
